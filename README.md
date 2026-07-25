@@ -68,13 +68,29 @@ fikra-ai/
 
 ## Environment variables
 
-See `.env.example`. At minimum, set:
+See `.env.example`. Variables are validated at startup via a Zod schema in
+`src/lib/env.ts` — import `env` from there instead of reading
+`process.env` directly. Currently all variables are optional (Supabase
+isn't wired in yet); set them once auth/data work begins:
 
+- `NEXT_PUBLIC_SITE_URL` — canonical production URL (used for `metadataBase`)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
 `SUPABASE_SERVICE_ROLE_KEY` is server-only and should never be exposed to
 the client or committed to source control.
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push/PR to `main`: install,
+format check, lint, type-check, build. All four must pass before merge.
+
+## Security headers
+
+Production security headers (CSP, X-Frame-Options, Referrer-Policy, HSTS,
+X-Content-Type-Options, Permissions-Policy) are set in `next.config.ts`.
+The CSP is intentionally conservative — revisit `connect-src`/`img-src`
+when Supabase, analytics, or third-party embeds are added.
 
 ## Deployment (Vercel)
 
@@ -99,3 +115,8 @@ the client or committed to source control.
 
 Foundation only. No product features, routes beyond the homepage, or
 database schema have been added yet.
+
+**Before the first real install:** this repo does not yet include a
+committed `package-lock.json`. Run `npm install` in an environment with
+npm registry access to generate one, commit it, and let CI take over
+verification from there.
