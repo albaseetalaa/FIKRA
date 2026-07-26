@@ -33,6 +33,16 @@ const envSchema = z.object({
     .string()
     .min(1, "SUPABASE_SERVICE_ROLE_KEY must not be empty")
     .optional(),
+  SUPABASE_URL: z
+    .string()
+    .url("SUPABASE_URL must be a valid URL")
+    .optional(),
+  AI_PERSISTENCE_PROVIDER: z
+    .enum(["memory", "supabase"])
+    .default("memory"),
+  RUN_SUPABASE_INTEGRATION_TESTS: z
+    .enum(["true", "false"])
+    .optional(),
 });
 
 function parseEnv() {

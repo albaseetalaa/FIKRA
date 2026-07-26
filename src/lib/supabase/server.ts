@@ -1,5 +1,8 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import type { CookieOptions, SetAllCookies } from "@supabase/ssr";
+
+type SupabaseCookieList = Parameters<SetAllCookies>[0];
 
 /**
  * Creates a Supabase client for use in Server Components, Server Actions,
@@ -24,11 +27,13 @@ export async function createClient() {
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet: SupabaseCookieList) {
         try {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options),
-          );
+          cookiesToSet.forEach(({ name, value, options }: {
+            name: string;
+            value: string;
+            options: CookieOptions;
+          }) => cookieStore.set(name, value, options));
         } catch {
           // Called from a Server Component with no request context to
           // write to — safe to ignore when middleware refreshes sessions.

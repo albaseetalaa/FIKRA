@@ -1,5 +1,7 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type SetAllCookies, type CookieOptions } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+
+type SupabaseCookieList = Parameters<SetAllCookies>[0];
 
 /**
  * Refreshes the Supabase auth session on every request and keeps the
@@ -21,14 +23,16 @@ export async function updateSession(request: NextRequest) {
       getAll() {
         return request.cookies.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet: SupabaseCookieList) {
         cookiesToSet.forEach(({ name, value }) =>
           request.cookies.set(name, value),
         );
         supabaseResponse = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options),
-        );
+        cookiesToSet.forEach(({ name, value, options }: {
+          name: string;
+          value: string;
+          options: CookieOptions;
+        }) => supabaseResponse.cookies.set(name, value, options));
       },
     },
   });

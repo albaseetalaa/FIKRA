@@ -22,13 +22,22 @@
   color-scheme: light;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 html,
 body {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
-  @apply bg-white font-sans text-neutral-900 antialiased;
+  @apply bg-slate-50 text-slate-950 font-sans antialiased;
+}
+
+::selection {
+  background: rgba(58, 99, 245, 0.18);
+  color: inherit;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -40,4 +49,19 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 8s ease-in-out infinite;
 }
