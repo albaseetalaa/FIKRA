@@ -6,6 +6,8 @@ import { InMemoryArtifactStore } from "../store/inMemoryStore";
 import { globalArtifactStore } from "../store/setup";
 import * as mocks from "./mocks";
 import type { ProjectContext } from "../context";
+import { AgentRegistry } from "../sdk/agentRegistry";
+import { sdkAgentDefinitions } from "../agents/sdkDefinitions";
 
 const eggreenContext: ProjectContext = {
   projectId: "proj_eggreen",
@@ -156,5 +158,63 @@ describe("CEO Orchestrator", () => {
     expect(resumed.state.status).toBe("completed");
     expect(resumed.tasks.length).toBe(3);
     expect(resumed.tasks.every((task) => task.status === "completed")).toBe(true);
+  });
+
+  it("does not auto-select unrelated enabled agents without typed request matches", () => {
+    const registry = new AgentRegistry();
+    const strategist = sdkAgentDefinitions.find((item) => item.id === "business_strategist");
+    const growthAdvisor = sdkAgentDefinitions.find((item) => item.id === "growth_advisor");
+    registry.register({ ...strategist!, enabled: true, selectableByDefault: false });
+    registry.register({ ...growthAdvisor!, enabled: true, selectableByDefault: false, dependencies: [] });
+
+    const ceo = new CEOOrchestrator(pipelines, agents, { agentRegistry: registry });
+    const plan = ceo.determineExecutionPlan("Build a focused business strategy for launch", {
+      requestedCategories: ["strategy"],
+    });
+
+    expect(plan.selectedAgents).toEqual(["business_strategist"]);
+  });
+
+  it("selects by requestedArtifactTypes and adds dependencies generically", () => {
+    const ceo = new CEOOrchestrator(pipelines, agents);
+    const plan = ceo.determineExecutionPlan("Need only financial outputs", {
+      requestedArtifactTypes: ["FinancialModel"],
+    });
+
+    expect(plan.selectedAgents).toEqual(["business_strategist", "market_research", "financial_analyst"]);
+    expect(plan.dependencyGraph.financial_analyst).toEqual(["business_strategist", "market_research"]);
+  });
+
+  it("selects by requestedCategories", () => {
+    const ceo = new CEOOrchestrator(pipelines, agents);
+    const plan = ceo.determineExecutionPlan("Need finance coverage", {
+      requestedCategories: ["finance"],
+    });
+
+    expect(plan.selectedAgents).toContain("financial_analyst");
+    expect(plan.selectedAgents).toContain("market_research");
+    expect(plan.selectedAgents).toContain("business_strategist");
+  });
+
+  it("selects by requestedCapabilities", () => {
+    const ceo = new CEOOrchestrator(pipelines, agents);
+    const plan = ceo.determineExecutionPlan("Need external analysis", {
+      requestedCapabilities: ["external_api"],
+    });
+
+    expect(plan.selectedAgents).toEqual(["business_strategist", "market_research", "financial_analyst"]);
+  });
+
+  it("selects explicitly requested synthetic agent without orchestrator modification", () => {
+    const registry = new AgentRegistry();
+    const marketing = sdkAgentDefinitions.find((item) => item.id === "marketing_strategist");
+    registry.register({ ...marketing!, enabled: true, dependencies: [] });
+
+    const ceo = new CEOOrchestrator(pipelines, agents, { agentRegistry: registry });
+    const plan = ceo.determineExecutionPlan("Run requested marketing workflow", {
+      requestedAgentIds: ["marketing_strategist"],
+    });
+
+    expect(plan.selectedAgents).toEqual(["marketing_strategist"]);
   });
 });

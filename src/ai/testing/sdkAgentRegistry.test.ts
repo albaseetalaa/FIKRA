@@ -70,6 +70,19 @@ describe("AgentRegistry", () => {
     expect(result.issues).toContain("Missing dependency 'business_strategist' for 'market_research'");
   });
 
+  it("accepts missing optional dependencies", () => {
+    const registry = new AgentRegistry();
+    registry.register(makeDefinition({
+      id: "business_strategist",
+      output: "BusinessPlan",
+      optionalDependencies: ["market_research"],
+      dependencies: [],
+    }));
+
+    const result = registry.validateDependencies();
+    expect(result.ok).toBe(true);
+  });
+
   it("filters enabled agents and discovers capabilities", () => {
     const registry = new AgentRegistry();
     registry.registerMany([

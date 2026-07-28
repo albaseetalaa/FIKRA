@@ -54,6 +54,7 @@ export interface CeoExecutionRequest {
   workflowRunId?: string;
   projectIdea: string;
   projectContext?: ProjectContext;
+  requestedAgentIds?: AgentID[];
   requestedCapabilities?: AgentCapability[];
   requestedArtifactTypes?: OutputModelName[];
   requestedCategories?: AgentCategory[];
@@ -94,7 +95,13 @@ function inferRequestedCategories(projectIdea: string, selectedGoals: string[] =
   return requested;
 }
 
-function inferRequestedArtifacts(projectIdea: string, enabledIds: string[]): Set<OutputModelName> {
+type ArtifactSelectionDefinition = {
+  id: string;
+  displayName: string;
+  outputArtifactType: OutputModelName;
+};
+
+function inferRequestedArtifacts(projectIdea: string, enabledDefinitions: ArtifactSelectionDefinition[]): Set<OutputModelName> {
   const requested = new Set<OutputModelName>();
   const normalized = projectIdea.toLowerCase();
 
@@ -113,23 +120,33 @@ function inferRequestedArtifacts(projectIdea: string, enabledIds: string[]): Set
     }
   }
 
-  for (const id of enabledIds) {
-    if (includesWord(normalized, id.replace(/_/g, " ")) || includesWord(normalized, id)) {
-      const inferred = id === "business_strategist"
-        ? "BusinessPlan"
-        : id === "market_research"
-          ? "MarketResearchReport"
-          : id === "financial_analyst"
-            ? "FinancialModel"
-            : null;
-      if (inferred) {
-        requested.add(inferred);
-      }
+  for (const definition of enabledDefinitions) {
+    const readableId = definition.id.replace(/_/g, " ");
+    if (
+      includesWord(normalized, definition.id)
+      || includesWord(normalized, readableId)
+      || includesWord(normalized, definition.displayName)
+    ) {
+      requested.add(definition.outputArtifactType);
     }
   }
 
   return requested;
 }
+
+type PlanningPreset = {
+  id: "startup_baseline";
+  requestedCategories: AgentCategory[];
+  requestedCapabilities: AgentCapability[];
+  requestedArtifactTypes: OutputModelName[];
+};
+
+const defaultPlanningPreset: PlanningPreset = {
+  id: "startup_baseline",
+  requestedCategories: ["strategy", "research", "finance"],
+  requestedCapabilities: [],
+  requestedArtifactTypes: [],
+};
 
 function toTopologicalOrder(selectedAgents: string[], graph: DependencyGraph, rankByAgent: Record<string, number>) {
   const indegree = new Map<string, number>();
@@ -217,9 +234,11 @@ export class CEOOrchestrator {
 
   determineExecutionPlan(projectIdea: string, selection?: {
     projectContext?: ProjectContext;
+    requestedAgentIds?: AgentID[];
     requestedCapabilities?: AgentCapability[];
     requestedArtifactTypes?: OutputModelName[];
     requestedCategories?: AgentCategory[];
+    requestPreset?: PlanningPreset;
   }): ExecutionPlan {
     const inspection = this.inspectProjectRequest(projectIdea);
 
@@ -234,10 +253,28 @@ export class CEOOrchestrator {
       ...(selection?.requestedCategories ?? []),
     ]);
     const requestedArtifacts = new Set<OutputModelName>([
-      ...inferRequestedArtifacts(inspection.normalizedIdea, enabledDefinitions.map((item) => item.id)),
+      ...inferRequestedArtifacts(inspection.normalizedIdea, enabledDefinitions),
       ...(selection?.requestedArtifactTypes ?? []),
     ]);
     const requestedCapabilities = new Set<AgentCapability>(selection?.requestedCapabilities ?? []);
+    const explicitlyRequestedAgents = new Set<string>(selection?.requestedAgentIds ?? []);
+
+    const hasTypedSelection =
+      (selection?.requestedAgentIds?.length ?? 0) > 0
+      || (selection?.requestedCapabilities?.length ?? 0) > 0
+      || (selection?.requestedArtifactTypes?.length ?? 0) > 0
+      || (selection?.requestedCategories?.length ?? 0) > 0;
+
+    const preset = hasTypedSelection ? undefined : (selection?.requestPreset ?? defaultPlanningPreset);
+    for (const category of preset?.requestedCategories ?? []) {
+      requestedCategories.add(category);
+    }
+    for (const capability of preset?.requestedCapabilities ?? []) {
+      requestedCapabilities.add(capability);
+    }
+    for (const artifact of preset?.requestedArtifactTypes ?? []) {
+      requestedArtifacts.add(artifact);
+    }
 
     const explicitAgentMentions = new Set<string>();
     for (const definition of enabledDefinitions) {
@@ -266,19 +303,14 @@ export class CEOOrchestrator {
       const categoryMatch = requestedCategories.has(definition.category);
       const artifactMatch = requestedArtifacts.has(definition.outputArtifactType);
       const capabilityMatch = definition.requiredCapabilities.some((capability) => requestedCapabilities.has(capability));
-      const explicitMatch = explicitAgentMentions.has(definition.id);
+      const explicitMatch = explicitAgentMentions.has(definition.id) || explicitlyRequestedAgents.has(definition.id);
 
       if (explicitMatch || categoryMatch || artifactMatch || capabilityMatch) {
         selectedSet.add(definition.id);
       }
     }
 
-    const hasExplicitSelectionConstraints =
-      (selection?.requestedCapabilities?.length ?? 0) > 0
-      || (selection?.requestedArtifactTypes?.length ?? 0) > 0
-      || (selection?.requestedCategories?.length ?? 0) > 0;
-
-    if (!hasExplicitSelectionConstraints) {
+    if (selectedSet.size === 0) {
       for (const definition of enabledDefinitions) {
         const supportedVerticals = definition.supportedVerticals as readonly string[];
         const verticalCompatible =
@@ -286,15 +318,7 @@ export class CEOOrchestrator {
           || supportedVerticals[0] === "any"
           || supportedVerticals.includes(selection.projectContext.businessVertical);
 
-        if (verticalCompatible && definition.selectableByDefault !== false) {
-          selectedSet.add(definition.id);
-        }
-      }
-    }
-
-    if (selectedSet.size === 0) {
-      for (const definition of enabledDefinitions) {
-        if (definition.selectableByDefault !== false) {
+        if (verticalCompatible && definition.category === "strategy") {
           selectedSet.add(definition.id);
         }
       }
@@ -738,6 +762,7 @@ export class CEOOrchestrator {
   async execute(request: CeoExecutionRequest): Promise<CeoExecutionResult> {
     const plan = this.determineExecutionPlan(request.projectIdea, {
       projectContext: request.projectContext,
+      requestedAgentIds: request.requestedAgentIds,
       requestedCapabilities: request.requestedCapabilities,
       requestedArtifactTypes: request.requestedArtifactTypes,
       requestedCategories: request.requestedCategories,

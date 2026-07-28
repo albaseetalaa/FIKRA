@@ -8,6 +8,7 @@ import { sdkAgentDefinitions } from "../agents/sdkDefinitions";
 import type { AgentExecutionContext } from "../sdk/types";
 import type { ProjectContext } from "../context";
 import mocks from "./mocks";
+import { outputContracts } from "../sdk/outputContractRegistry";
 
 const eggreenContext: ProjectContext = {
   projectId: "proj_eggreen",
@@ -132,5 +133,81 @@ describe("AgentFactory", () => {
     const artifacts = await store.list("proj-factory");
     expect(artifacts.length).toBe(1);
     expect(artifacts[0]?.outputType).toBe("BusinessPlan");
+  });
+
+  it("ensures enabled definitions resolve canonical output contracts", () => {
+    const enabled = sdkAgentDefinitions.filter((item) => item.enabled);
+    for (const definition of enabled) {
+      const contract = outputContracts[definition.outputArtifactType];
+      expect(contract).toBeDefined();
+      expect(definition.outputArtifactType).toBe(contract.outputType);
+      expect(definition.version).toBe(contract.version);
+    }
+  });
+
+  it("delegates provider/schema/semantic validation to canonical contract", () => {
+    const definition = sdkAgentDefinitions.find((item) => item.id === "business_strategist");
+    expect(definition).toBeDefined();
+    const contract = outputContracts[definition!.outputArtifactType];
+    expect(contract).toBeDefined();
+
+    const providerSpy = [] as string[];
+    const originalProviderSchema = contract.providerSchema;
+    contract.providerSchema = ((ctx: ProjectContext) => {
+      providerSpy.push("provider");
+      return originalProviderSchema(ctx);
+    }) as typeof contract.providerSchema;
+
+    const structuralSpy = [] as string[];
+    const originalStructural = contract.structuralValidator;
+    contract.structuralValidator = ((raw: unknown, ctx?: ProjectContext) => {
+      structuralSpy.push("structural");
+      return originalStructural(raw, ctx);
+    }) as typeof contract.structuralValidator;
+
+    const semanticSpy = [] as string[];
+    const originalSemantic = contract.semanticValidator;
+    contract.semanticValidator = ((raw: unknown, ctx?: ProjectContext) => {
+      semanticSpy.push("semantic");
+      return originalSemantic(raw, ctx);
+    }) as typeof contract.semanticValidator;
+
+    try {
+      const ctx = createExecutionContext(new InMemoryArtifactStore(), new ProviderManager());
+      definition!.providerSchema(ctx);
+      definition!.structuralValidator(mocks.validBusinessPlan, ctx);
+      definition!.semanticValidator(mocks.validBusinessPlan, ctx);
+
+      expect(providerSpy.length).toBe(1);
+      expect(structuralSpy.length).toBe(1);
+      expect(semanticSpy.length).toBe(1);
+    } finally {
+      contract.providerSchema = originalProviderSchema;
+      contract.structuralValidator = originalStructural;
+      contract.semanticValidator = originalSemantic;
+    }
+  });
+
+  it("rejects enabled incomplete agents at startup readiness validation", () => {
+    const providerManager = new ProviderManager();
+    const store = new InMemoryArtifactStore();
+    const registry = new OutputContractRegistry();
+    const factory = new AgentFactory(
+      { providerManager, artifactStore: store },
+      new Map(registry.list().map((contract) => [contract.outputType, contract])),
+    );
+
+    const base = sdkAgentDefinitions.find((item) => item.id === "business_strategist");
+    const incomplete = {
+      ...base!,
+      enabled: true,
+      tokenBudget: {
+        initialOutputTokens: 0,
+        repairOutputTokens: 0,
+        maxOutputTokens: 0,
+      },
+    };
+
+    expect(() => factory.validateAtStartup([incomplete])).toThrow("incomplete tokenBudget policy");
   });
 });
