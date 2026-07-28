@@ -107,31 +107,46 @@ export class Orchestrator {
       this.tasks.set(taskId, { ...(this.tasks.get(taskId)!), status: taskState.status });
       await this.emitTaskChanged(taskId);
       try {
-        const dependencyOutputs = (step.dependsOn ?? [])
+        const dependencyIds = step.dependsOn ?? [];
+        const dependencyOutputs = dependencyIds
           .map((dependencyId) => stepOutputs.get(dependencyId))
           .filter((value) => value !== undefined);
+
+        const dependencyArtifactsByType: Record<string, unknown[]> = {};
+        const dependencyArtifactsByAgent: Record<string, unknown[]> = {};
+
+        for (const dependencyId of dependencyIds) {
+          const dependencyOutput = stepOutputs.get(dependencyId);
+          if (dependencyOutput === undefined) continue;
+
+          const dependencyStep = pipeline.steps.find((item) => item.id === dependencyId);
+          if (!dependencyStep) continue;
+
+          const dependencyAgent = dependencyStep.agent;
+          const dependencySdkDefinition = globalAgentRegistry.getById(dependencyAgent);
+          const dependencyOutputType = dependencySdkDefinition?.outputArtifactType;
+
+          dependencyArtifactsByAgent[dependencyAgent] = [
+            ...(dependencyArtifactsByAgent[dependencyAgent] ?? []),
+            dependencyOutput,
+          ];
+
+          if (dependencyOutputType) {
+            dependencyArtifactsByType[dependencyOutputType] = [
+              ...(dependencyArtifactsByType[dependencyOutputType] ?? []),
+              dependencyOutput,
+            ];
+          }
+        }
 
         const stepInput: Record<string, unknown> = {
           ...(input ?? {}),
           dependencyOutputs,
+          dependencyArtifactsByType,
+          dependencyArtifactsByAgent,
+          upstreamArtifactsByType: dependencyArtifactsByType,
+          upstreamArtifactsByAgent: dependencyArtifactsByAgent,
         };
-
-        const sdkDefinition = globalAgentRegistry.getById(step.agent);
-        if (sdkDefinition?.lifecycleHooks?.prepareInput) {
-          const draftContext = this.buildExecutionContext({
-            projectId,
-            workflowRunId,
-            taskId,
-            pipelineId: pipeline.id,
-            agentId: step.agent,
-            modelCfg: this.models[step.agent],
-            input: stepInput,
-            attemptNumber: 1,
-            repairAttemptNumber: 0,
-            executionMode: "normal",
-          });
-          Object.assign(stepInput, sdkDefinition.lifecycleHooks.prepareInput(draftContext, stepInput));
-        }
 
         const result = await this.runAgent(step, pipeline.id, taskId, projectId, stepInput, workflowRunId);
         // update task with result and attempts
@@ -365,6 +380,7 @@ export class Orchestrator {
     executionMode: "normal" | "repair" | "resume";
   }): AgentExecutionContext {
     const modelCfg = params.modelCfg;
+    const sdkDefinition = globalAgentRegistry.getById(params.agentId as import("./types/agents").AgentID);
     const outputBudget = getOutputBudgetByOutputModel(
       this.agents.find((item) => item.id === params.agentId)?.outputModel as OutputModelName | undefined,
     );
@@ -384,9 +400,11 @@ export class Orchestrator {
       selectedProviderId: modelCfg?.provider ?? "mock",
       providerModel: modelCfg?.model ?? "unknown",
       outputTokenBudget: {
-        initialOutputTokens: outputBudget?.base ?? (modelCfg?.maxTokens ?? 1200),
-        repairOutputTokens: Math.min(outputBudget?.max ?? (modelCfg?.maxTokens ?? 1800), (outputBudget?.base ?? 1200) + 600),
-        maxOutputTokens: outputBudget?.max ?? (modelCfg?.maxTokens ?? 2200),
+        initialOutputTokens: sdkDefinition?.tokenBudget.initialOutputTokens ?? outputBudget?.base ?? (modelCfg?.maxTokens ?? 1200),
+        repairOutputTokens:
+          sdkDefinition?.tokenBudget.repairOutputTokens
+          ?? Math.min(outputBudget?.max ?? (modelCfg?.maxTokens ?? 1800), (outputBudget?.base ?? 1200) + 600),
+        maxOutputTokens: sdkDefinition?.tokenBudget.maxOutputTokens ?? outputBudget?.max ?? (modelCfg?.maxTokens ?? 2200),
       },
       attemptNumber: params.attemptNumber,
       repairAttemptNumber: params.repairAttemptNumber,
@@ -396,6 +414,15 @@ export class Orchestrator {
         agentId: params.agentId,
         correlationId: `${params.projectId ?? "unknown"}:${params.taskId ?? params.agentId}`,
       },
+      requestedCapabilities: Array.isArray(params.input.requestedCapabilities)
+        ? (params.input.requestedCapabilities as import("./sdk").AgentCapability[])
+        : undefined,
+      requestedArtifactTypes: Array.isArray(params.input.requestedArtifactTypes)
+        ? (params.input.requestedArtifactTypes as import("./types/outputs").OutputModelName[])
+        : undefined,
+      requestedGoals: Array.isArray(params.input.requestedGoals)
+        ? (params.input.requestedGoals as string[])
+        : undefined,
       persistence: {
         artifactStore: globalArtifactStore,
       },

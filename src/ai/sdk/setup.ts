@@ -30,4 +30,4 @@ export const globalAgentFactory = new AgentFactory(
   contractMap,
 );
 
-globalAgentFactory.validateAtStartup(globalAgentRegistry.list());
+globalAgentFactory.validateAtStartup(globalAgentRegistry.listEnabled());

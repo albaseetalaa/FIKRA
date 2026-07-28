@@ -61,8 +61,17 @@ export class AgentRegistry {
     return this.list().filter((agent) => agent.enabled);
   }
 
-  discoverCapabilities(): string[] {
+  discoverAllCapabilities(): string[] {
     return Array.from(new Set(this.list().flatMap((agent) => agent.requiredCapabilities))).sort();
+  }
+
+  discoverEnabledCapabilities(): string[] {
+    return Array.from(new Set(this.listEnabled().flatMap((agent) => agent.requiredCapabilities))).sort();
+  }
+
+  discoverCapabilities(): string[] {
+    // Backward-compatible alias for existing callers/tests.
+    return this.discoverAllCapabilities();
   }
 
   getVersionMetadata() {
@@ -75,11 +84,6 @@ export class AgentRegistry {
       for (const dep of agent.dependencies) {
         if (!this.byId.has(dep)) {
           issues.push(`Missing dependency '${dep}' for '${agent.id}'`);
-        }
-      }
-      for (const dep of agent.optionalDependencies) {
-        if (!this.byId.has(dep)) {
-          issues.push(`Missing optional dependency '${dep}' for '${agent.id}'`);
         }
       }
     }

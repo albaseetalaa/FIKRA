@@ -21,9 +21,28 @@ export function createAgentDefinitionTemplate(input: {
     inputArtifactTypes: [],
     outputArtifactType: input.outputArtifactType,
     promptBuilder: () => "Return a strict JSON object only.",
-    providerSchema: () => null,
-    structuralValidator: (raw) => ({ success: true, value: raw }),
-    semanticValidator: () => [],
+    providerSchema: () => ({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        __notConfigured: { const: "IMPLEMENT_AGENT_OUTPUT_SCHEMA" },
+      },
+      required: ["__notConfigured"],
+    }),
+    structuralValidator: () => ({
+      success: false,
+      errors: [
+        {
+          path: [],
+          code: "custom",
+          message: "Agent template is not configured. Implement structural validation before enabling this agent.",
+        },
+      ],
+    }),
+    semanticValidator: () => [
+      "Agent template is not configured. Implement semantic validation before enabling this agent.",
+    ],
     tokenBudget: {
       initialOutputTokens: 1500,
       repairOutputTokens: 2100,
@@ -50,6 +69,8 @@ export function createAgentDefinitionTemplate(input: {
     evaluationFixtures: {
       deterministicSuiteNames: ["new-agent-deterministic-suite"],
     },
+    planningTags: ["template"],
+    selectableByDefault: false,
     enabled: false,
   };
 }

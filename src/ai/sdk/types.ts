@@ -80,6 +80,8 @@ export interface AgentDefinition {
   supportedVerticals: BusinessVertical[] | ["any"];
   requiredCapabilities: AgentCapability[];
   requiredProjectContextFields: Array<keyof ProjectContext>;
+  planningTags?: string[];
+  selectableByDefault?: boolean;
   inputArtifactTypes: OutputModelName[];
   outputArtifactType: OutputModelName;
   promptBuilder: (ctx: AgentExecutionContext) => string;
@@ -122,6 +124,9 @@ export interface AgentExecutionContext {
     correlationId?: string;
   };
   cancellationSignal?: AbortSignal;
+  requestedCapabilities?: AgentCapability[];
+  requestedArtifactTypes?: OutputModelName[];
+  requestedGoals?: string[];
   persistence: {
     artifactStore: ArtifactStore;
   };
@@ -179,6 +184,9 @@ export interface OutputContract {
   structuralValidator: (raw: unknown, projectContext?: ProjectContext) => ValidationResult<unknown>;
   semanticValidator: (raw: unknown, projectContext?: ProjectContext) => string[];
   promptRequirements: string[];
+  requiresStructuredOutput?: boolean;
+  allowsPassThroughStructuralValidation?: boolean;
+  requiresSemanticValidation?: boolean;
   persistenceMetadata: {
     validationStatusOnSuccess: "valid";
     persistInvalidArtifacts: boolean;

@@ -1,14 +1,9 @@
 import type { AgentID } from "../types/agents";
 import type { AgentDefinition, AgentExecutionContext } from "../sdk";
 import { buildAgentPrompt } from "../prompts/agentPromptBuilder";
-import { getProviderOutputSchema } from "../providers/outputSchemas";
-import { validateModel } from "../validation/validator";
-import {
-  validateBusinessPlanSemantics,
-  validateFinancialModelSemantics,
-  validateMarketResearchSemantics,
-} from "../validation/semanticValidators";
 import { getOutputBudget } from "../providers/outputBudgets";
+import { outputContracts } from "../sdk/outputContractRegistry";
+import type { OutputModelName } from "../types/outputs";
 
 function buildDefaultRepairPrompt(input: {
   originalPrompt: string;
@@ -26,15 +21,27 @@ function buildDefaultRepairPrompt(input: {
   ].join("\n");
 }
 
+function firstArtifactByType(rawInput: Record<string, unknown>, outputType: OutputModelName): unknown {
+  const byType = rawInput.dependencyArtifactsByType as Record<string, unknown[]> | undefined;
+  const candidates = byType?.[outputType];
+  if (Array.isArray(candidates) && candidates.length > 0) {
+    return candidates[0];
+  }
+  return undefined;
+}
+
 function baseDefinition(input: {
   id: AgentID;
   displayName: string;
   description: string;
   category: AgentDefinition["category"];
   outputArtifactType: AgentDefinition["outputArtifactType"];
+  inputArtifactTypes?: AgentDefinition["inputArtifactTypes"];
   dependencies: AgentID[];
   optionalDependencies?: AgentID[];
+  lifecycleHooks?: AgentDefinition["lifecycleHooks"];
   enabled?: boolean;
+  selectableByDefault?: boolean;
 }): AgentDefinition {
   const budget =
     input.outputArtifactType === "BusinessPlan"
@@ -45,16 +52,18 @@ function baseDefinition(input: {
           ? getOutputBudget("FinancialModel")
           : { base: 1200, max: 2200 };
 
+  const contract = outputContracts[input.outputArtifactType];
+
   return {
     id: input.id,
-    version: "1.0.0",
+    version: contract.version,
     displayName: input.displayName,
     description: input.description,
     category: input.category,
     supportedVerticals: ["any"],
     requiredCapabilities: ["external_api"],
     requiredProjectContextFields: ["businessName", "businessDescription", "country", "businessVertical", "revenueModelType"],
-    inputArtifactTypes: [],
+    inputArtifactTypes: input.inputArtifactTypes ?? [],
     outputArtifactType: input.outputArtifactType,
     promptBuilder: (ctx: AgentExecutionContext) =>
       buildAgentPrompt({
@@ -63,22 +72,9 @@ function baseDefinition(input: {
         upstreamArtifacts: ctx.upstreamArtifacts,
         requiredSchemaName: input.outputArtifactType,
       }),
-    providerSchema: (ctx) => getProviderOutputSchema(input.outputArtifactType, ctx.projectContext),
-    structuralValidator: (raw, ctx) => validateModel(input.outputArtifactType, raw, { projectContext: ctx.projectContext }),
-    semanticValidator: (raw, ctx) => {
-      const parsed = validateModel(input.outputArtifactType, raw, { projectContext: ctx.projectContext });
-      if (!parsed.success) return parsed.errors.map((item) => item.message);
-      if (input.outputArtifactType === "BusinessPlan") {
-        return validateBusinessPlanSemantics(parsed.value as never, ctx.projectContext);
-      }
-      if (input.outputArtifactType === "MarketResearchReport") {
-        return validateMarketResearchSemantics(parsed.value as never);
-      }
-      if (input.outputArtifactType === "FinancialModel") {
-        return validateFinancialModelSemantics(parsed.value as never, ctx.projectContext);
-      }
-      return [];
-    },
+    providerSchema: (ctx) => contract.providerSchema(ctx.projectContext),
+    structuralValidator: (raw, ctx) => contract.structuralValidator(raw, ctx.projectContext),
+    semanticValidator: (raw, ctx) => contract.semanticValidator(raw, ctx.projectContext),
     tokenBudget: {
       initialOutputTokens: budget.base,
       repairOutputTokens: Math.min(budget.max, budget.base + 600),
@@ -103,93 +99,94 @@ function baseDefinition(input: {
     },
     dependencies: input.dependencies,
     optionalDependencies: input.optionalDependencies ?? [],
-    lifecycleHooks: {
-      prepareInput: (ctx, rawInput) => {
-        const dependencyOutputs = Array.isArray(rawInput.dependencyOutputs)
-          ? (rawInput.dependencyOutputs as unknown[])
-          : [];
-
-        if (input.id === "market_research") {
-          const businessPlan = dependencyOutputs[0];
-          const projectIdea = typeof rawInput.projectIdea === "string"
-            ? rawInput.projectIdea
-            : rawInput.projectSummary;
-          const derivedTargetMarket =
-            businessPlan && typeof businessPlan === "object" && "targetMarket" in (businessPlan as Record<string, unknown>)
-              ? (businessPlan as { targetMarket?: unknown }).targetMarket
-              : undefined;
-
-          return {
-            ...rawInput,
-            businessPlan,
-            projectIdea,
-            targetMarketContext: typeof rawInput.targetMarketContext === "string"
-              ? rawInput.targetMarketContext
-              : typeof derivedTargetMarket === "string"
-                ? derivedTargetMarket
-                : "",
-          };
-        }
-
-        if (input.id === "financial_analyst") {
-          const businessPlan = dependencyOutputs.find(
-            (value) => value && typeof value === "object" && (
-              "primaryRevenueModel" in (value as Record<string, unknown>)
-              || "revenueModel" in (value as Record<string, unknown>)
-            ),
-          );
-          const marketResearchReport = dependencyOutputs.find(
-            (value) => value && typeof value === "object" && "marketSizeEstimate" in (value as Record<string, unknown>),
-          );
-          const targetMarket =
-            businessPlan && typeof businessPlan === "object" && "targetMarket" in businessPlan
-              ? (businessPlan as { targetMarket?: unknown }).targetMarket
-              : undefined;
-
-          return {
-            ...rawInput,
-            businessPlan,
-            marketResearchReport,
-            projectIdea: typeof rawInput.projectIdea === "string" ? rawInput.projectIdea : rawInput.projectSummary,
-            targetMarket: typeof targetMarket === "string" ? targetMarket : "",
-          };
-        }
-
-        return rawInput;
-      },
-    },
+    lifecycleHooks: input.lifecycleHooks,
     evaluationFixtures: {
       deterministicSuiteNames: [],
     },
+    selectableByDefault: input.selectableByDefault ?? (input.enabled ?? true),
     enabled: input.enabled ?? true,
   };
 }
 
+const businessStrategistDefinition = baseDefinition({
+  id: "business_strategist",
+  displayName: "Business Strategist",
+  description: "Crafts high-level business strategy and priorities.",
+  category: "strategy",
+  outputArtifactType: "BusinessPlan",
+  inputArtifactTypes: [],
+  dependencies: [],
+  lifecycleHooks: {
+    prepareInput: (_ctx, rawInput) => ({
+      ...rawInput,
+      projectIdea: typeof rawInput.projectIdea === "string" ? rawInput.projectIdea : rawInput.projectSummary,
+    }),
+  },
+});
+
+const marketResearchDefinition = baseDefinition({
+  id: "market_research",
+  displayName: "Market Research Agent",
+  description: "Collects market data, customer segments and trends.",
+  category: "research",
+  outputArtifactType: "MarketResearchReport",
+  inputArtifactTypes: ["BusinessPlan"],
+  dependencies: ["business_strategist"],
+  lifecycleHooks: {
+    prepareInput: (_ctx, rawInput) => {
+      const businessPlan = firstArtifactByType(rawInput, "BusinessPlan");
+      const derivedTargetMarket =
+        businessPlan && typeof businessPlan === "object" && "targetMarket" in (businessPlan as Record<string, unknown>)
+          ? (businessPlan as { targetMarket?: unknown }).targetMarket
+          : undefined;
+
+      return {
+        ...rawInput,
+        businessPlan,
+        projectIdea: typeof rawInput.projectIdea === "string" ? rawInput.projectIdea : rawInput.projectSummary,
+        targetMarketContext:
+          typeof rawInput.targetMarketContext === "string"
+            ? rawInput.targetMarketContext
+            : typeof derivedTargetMarket === "string"
+              ? derivedTargetMarket
+              : "",
+      };
+    },
+  },
+});
+
+const financialAnalystDefinition = baseDefinition({
+  id: "financial_analyst",
+  displayName: "Financial Analyst",
+  description: "Builds financial projections, budgets and models.",
+  category: "finance",
+  outputArtifactType: "FinancialModel",
+  inputArtifactTypes: ["BusinessPlan", "MarketResearchReport"],
+  dependencies: ["business_strategist", "market_research"],
+  lifecycleHooks: {
+    prepareInput: (_ctx, rawInput) => {
+      const businessPlan = firstArtifactByType(rawInput, "BusinessPlan");
+      const marketResearchReport = firstArtifactByType(rawInput, "MarketResearchReport");
+      const targetMarket =
+        businessPlan && typeof businessPlan === "object" && "targetMarket" in (businessPlan as Record<string, unknown>)
+          ? (businessPlan as { targetMarket?: unknown }).targetMarket
+          : undefined;
+
+      return {
+        ...rawInput,
+        businessPlan,
+        marketResearchReport,
+        projectIdea: typeof rawInput.projectIdea === "string" ? rawInput.projectIdea : rawInput.projectSummary,
+        targetMarket: typeof targetMarket === "string" ? targetMarket : "",
+      };
+    },
+  },
+});
+
 export const sdkAgentDefinitions: AgentDefinition[] = [
-  baseDefinition({
-    id: "business_strategist",
-    displayName: "Business Strategist",
-    description: "Crafts high-level business strategy and priorities.",
-    category: "strategy",
-    outputArtifactType: "BusinessPlan",
-    dependencies: [],
-  }),
-  baseDefinition({
-    id: "market_research",
-    displayName: "Market Research Agent",
-    description: "Collects market data, customer segments and trends.",
-    category: "research",
-    outputArtifactType: "MarketResearchReport",
-    dependencies: ["business_strategist"],
-  }),
-  baseDefinition({
-    id: "financial_analyst",
-    displayName: "Financial Analyst",
-    description: "Builds financial projections, budgets and models.",
-    category: "finance",
-    outputArtifactType: "FinancialModel",
-    dependencies: ["business_strategist", "market_research"],
-  }),
+  businessStrategistDefinition,
+  marketResearchDefinition,
+  financialAnalystDefinition,
   baseDefinition({
     id: "brand_strategist",
     displayName: "Brand Strategist",

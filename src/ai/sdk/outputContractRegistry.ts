@@ -50,6 +50,9 @@ const rawOutputContracts: Record<OutputModelName, RawOutputContract> = {
       "Authoritative fields must match ProjectContext.",
       "Milestones must be ordered and non-stale.",
     ],
+    requiresStructuredOutput: true,
+    allowsPassThroughStructuralValidation: false,
+    requiresSemanticValidation: true,
     migrationMetadata: {
       currentVersion: "1.0.0",
       previousVersions: [],
@@ -71,6 +74,9 @@ const rawOutputContracts: Record<OutputModelName, RawOutputContract> = {
       "Do not fabricate citations.",
       "Provide unavailableCompetitorOutcome when competitor data is unavailable.",
     ],
+    requiresStructuredOutput: true,
+    allowsPassThroughStructuralValidation: false,
+    requiresSemanticValidation: true,
     migrationMetadata: {
       currentVersion: "1.0.0",
       previousVersions: [],
@@ -92,6 +98,9 @@ const rawOutputContracts: Record<OutputModelName, RawOutputContract> = {
       "Use exactly conservative/expected/optimistic scenarios.",
       "Financial values must include currency/period/assumptions/confidence.",
     ],
+    requiresStructuredOutput: true,
+    allowsPassThroughStructuralValidation: false,
+    requiresSemanticValidation: true,
     migrationMetadata: {
       currentVersion: "1.0.0",
       previousVersions: [],
@@ -125,6 +134,9 @@ const rawOutputContracts: Record<OutputModelName, RawOutputContract> = {
     structuralValidator: (raw, projectContext) => structural("ProjectScore", raw, projectContext),
     semanticValidator: emptySemantic,
     promptRequirements: ["Deterministic weighted-score structure."],
+    requiresStructuredOutput: false,
+    allowsPassThroughStructuralValidation: false,
+    requiresSemanticValidation: false,
     migrationMetadata: { currentVersion: "1.0.0", previousVersions: [] },
   },
   ExecutionPlan: {
@@ -135,6 +147,9 @@ const rawOutputContracts: Record<OutputModelName, RawOutputContract> = {
     structuralValidator: (raw, projectContext) => structural("ExecutionPlan", raw, projectContext),
     semanticValidator: emptySemantic,
     promptRequirements: ["Workflow-level execution contract."],
+    requiresStructuredOutput: false,
+    allowsPassThroughStructuralValidation: false,
+    requiresSemanticValidation: false,
     migrationMetadata: { currentVersion: "1.0.0", previousVersions: [] },
   },
   BrandStrategy: {

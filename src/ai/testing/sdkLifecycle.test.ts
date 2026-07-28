@@ -83,10 +83,11 @@ describe("sdk lifecycle", () => {
     const store = new InMemoryArtifactStore();
     const execution = await executeAgentLifecycle({
       definitionPrompt: "prompt",
-      providerPrompt: "prompt",
       outputContract: outputContracts.BusinessPlan,
       executionContext: makeContext(store),
       requiredCapabilities: ["external_api"],
+      requiredProjectContextFields: [],
+      supportedVerticals: ["any"],
       persistencePolicy: { persistInvalidAttempts: true, persistValidArtifactsOnly: true },
       maxTransportRetries: 1,
       maxRepairAttempts: 1,
@@ -114,10 +115,11 @@ describe("sdk lifecycle", () => {
     const store = new InMemoryArtifactStore();
     const execution = await executeAgentLifecycle({
       definitionPrompt: "prompt",
-      providerPrompt: "prompt",
       outputContract: outputContracts.BusinessPlan,
       executionContext: makeContext(store),
       requiredCapabilities: ["external_api"],
+      requiredProjectContextFields: [],
+      supportedVerticals: ["any"],
       persistencePolicy: { persistInvalidAttempts: true, persistValidArtifactsOnly: true },
       maxTransportRetries: 1,
       maxRepairAttempts: 0,
