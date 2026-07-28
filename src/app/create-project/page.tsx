@@ -108,7 +108,20 @@ export default function CreateProjectPage() {
       const createRes = await fetch("/api/projects/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea: data.idea }),
+        body: JSON.stringify({
+          idea: data.idea,
+          businessName: data.businessName,
+          industry: data.industry,
+          country: data.country,
+          city: data.city,
+          stage: data.stage,
+          audience: data.audience,
+          ageRange: data.ageRange,
+          customerType: data.customerType,
+          goals: data.goals,
+          budget: data.budget,
+          timeline: data.timeline,
+        }),
       });
 
       if (!createRes.ok) {

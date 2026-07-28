@@ -1,8 +1,14 @@
 import type { ArtifactStore } from "../../ai/store/artifactStore";
-import type { AttemptRecord, ExecutionStatus, ProjectRecord, WorkflowRunRecord, WorkflowTaskRecord } from "./types";
+import type { AttemptRecord, ExecutionStatus, ProjectRecord, WorkflowCheckpointRecord, WorkflowRunRecord, WorkflowTaskRecord } from "./types";
 
 export interface ProjectRepository {
-  create(input: { id: string; name: string; idea: string; activePipelineId: string }): Promise<ProjectRecord>;
+  create(input: {
+    id: string;
+    name: string;
+    idea: string;
+    activePipelineId: string;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<ProjectRecord>;
   getById(id: string): Promise<ProjectRecord | null>;
   list(limit?: number): Promise<ProjectRecord[]>;
   update(id: string, patch: Partial<Omit<ProjectRecord, "id" | "createdAt">>): Promise<ProjectRecord | null>;
@@ -39,11 +45,23 @@ export interface AttemptRepository {
   listByTask(taskId: string): Promise<AttemptRecord[]>;
 }
 
+export interface WorkflowCheckpointRepository {
+  upsert(input: Omit<WorkflowCheckpointRecord, "createdAt" | "updatedAt">): Promise<WorkflowCheckpointRecord>;
+  getActiveByWorkflowRunId(workflowRunId: string): Promise<WorkflowCheckpointRecord | null>;
+  consumeRequest(input: {
+    workflowRunId: string;
+    requestId: string;
+    checkpointVersion: number;
+  }): Promise<WorkflowCheckpointRecord | null>;
+  clear(workflowRunId: string): Promise<void>;
+}
+
 export interface PersistenceContainer {
   provider: "memory" | "supabase";
   projects: ProjectRepository;
   workflowRuns: WorkflowRunRepository;
   workflowTasks: WorkflowTaskRepository;
   attempts: AttemptRepository;
+  checkpoints: WorkflowCheckpointRepository;
   artifacts: ArtifactStore;
 }

@@ -24,6 +24,8 @@ create table if not exists public.projects (
   sanitized_error_message text
 );
 
+drop trigger if exists projects_set_updated_at on public.projects;
+
 create trigger projects_set_updated_at
 before update on public.projects
 for each row
@@ -40,7 +42,7 @@ create table if not exists public.workflow_runs (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
+drop trigger if exists workflow_runs_set_updated_at on public.workflow_runs;
 create trigger workflow_runs_set_updated_at
 before update on public.workflow_runs
 for each row
@@ -61,7 +63,7 @@ create table if not exists public.workflow_tasks (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
+drop trigger if exists workflow_tasks_set_updated_at on public.workflow_tasks;
 create trigger workflow_tasks_set_updated_at
 before update on public.workflow_tasks
 for each row
@@ -101,7 +103,7 @@ create table if not exists public.artifacts (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
+drop trigger if exists artifacts_set_updated_at on public.artifacts;
 create trigger artifacts_set_updated_at
 before update on public.artifacts
 for each row

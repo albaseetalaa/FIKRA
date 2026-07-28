@@ -1,7 +1,7 @@
 import type { ArtifactRecord, ArtifactStore } from "../../../ai/store/artifactStore";
 import { InMemoryArtifactStore } from "../../../ai/store/inMemoryStore";
-import type { AttemptRepository, ProjectRepository, WorkflowRunRepository, WorkflowTaskRepository } from "../interfaces";
-import type { AttemptRecord, ExecutionStatus, ProjectRecord, WorkflowRunRecord, WorkflowTaskRecord } from "../types";
+import type { AttemptRepository, ProjectRepository, WorkflowCheckpointRepository, WorkflowRunRepository, WorkflowTaskRepository } from "../interfaces";
+import type { AttemptRecord, ExecutionStatus, ProjectRecord, WorkflowCheckpointRecord, WorkflowRunRecord, WorkflowTaskRecord } from "../types";
 
 function nowIso() {
   return new Date().toISOString();
@@ -10,12 +10,19 @@ function nowIso() {
 export class InMemoryProjectRepository implements ProjectRepository {
   private items = new Map<string, ProjectRecord>();
 
-  async create(input: { id: string; name: string; idea: string; activePipelineId: string }): Promise<ProjectRecord> {
+  async create(input: {
+    id: string;
+    name: string;
+    idea: string;
+    activePipelineId: string;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<ProjectRecord> {
     const now = nowIso();
     const record: ProjectRecord = {
       id: input.id,
       name: input.name,
       idea: input.idea,
+      metadata: input.metadata ?? null,
       status: "queued",
       activePipelineId: input.activePipelineId,
       createdAt: now,
@@ -165,6 +172,48 @@ export class InMemoryAttemptRepository implements AttemptRepository {
     return Array.from(this.items.values())
       .filter((item) => item.taskId === taskId)
       .sort((a, b) => a.attemptNumber - b.attemptNumber);
+  }
+}
+
+export class InMemoryWorkflowCheckpointRepository implements WorkflowCheckpointRepository {
+  private items = new Map<string, WorkflowCheckpointRecord>();
+
+  async upsert(input: Omit<WorkflowCheckpointRecord, "createdAt" | "updatedAt">): Promise<WorkflowCheckpointRecord> {
+    const now = nowIso();
+    const current = this.items.get(input.workflowRunId);
+    const next: WorkflowCheckpointRecord = {
+      ...input,
+      createdAt: current?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.items.set(input.workflowRunId, next);
+    return next;
+  }
+
+  async getActiveByWorkflowRunId(workflowRunId: string): Promise<WorkflowCheckpointRecord | null> {
+    return this.items.get(workflowRunId) ?? null;
+  }
+
+  async consumeRequest(input: { workflowRunId: string; requestId: string; checkpointVersion: number }): Promise<WorkflowCheckpointRecord | null> {
+    const current = this.items.get(input.workflowRunId);
+    if (!current) return null;
+    if (current.requestId !== input.requestId) return null;
+    if (current.checkpointVersion !== input.checkpointVersion) return null;
+    if (current.requestConsumedAt) return null;
+
+    const now = nowIso();
+    const next: WorkflowCheckpointRecord = {
+      ...current,
+      requestConsumedAt: now,
+      checkpointVersion: current.checkpointVersion + 1,
+      updatedAt: now,
+    };
+    this.items.set(input.workflowRunId, next);
+    return next;
+  }
+
+  async clear(workflowRunId: string): Promise<void> {
+    this.items.delete(workflowRunId);
   }
 }
 

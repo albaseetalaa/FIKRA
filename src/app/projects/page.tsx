@@ -2,12 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { getLoadedState, loadProjectHistoryItems } from "./historyClient";
 
 type ProjectHistoryItem = {
   id: string;
   name: string;
   ideaExcerpt: string;
   status: "queued" | "running" | "completed" | "failed";
+  workflowStatus?: string | null;
+  pausedTaskId?: string | null;
+  userInputRequest?: unknown | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -21,17 +25,16 @@ export default function ProjectsHistoryPage() {
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch("/api/projects/history", { cache: "no-store" });
-        if (!res.ok) throw new Error("Could not load projects.");
-        const payload = (await res.json()) as { items: ProjectHistoryItem[] };
+        const items = await loadProjectHistoryItems();
         if (cancelled) return;
-        setItems(payload.items ?? []);
-        setError(null);
+        const next = getLoadedState(items);
+        setItems(next.items);
+        setError(next.error);
+        setLoading(next.loading);
       } catch (err: unknown) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Could not load projects.");
-      } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     };
 
@@ -63,8 +66,16 @@ export default function ProjectsHistoryPage() {
                     <h2 className="text-lg font-semibold text-white">{item.name}</h2>
                     <p className="mt-1 text-sm text-slate-400">{item.ideaExcerpt}</p>
                   </div>
-                  <span className="rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-200">{item.status}</span>
+                  <span className="rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-200">{item.workflowStatus ?? item.status}</span>
                 </div>
+                {item.workflowStatus === "waiting_for_user" ? (
+                  <p className="mt-2 text-xs text-amber-300">
+                    Paused on {item.pausedTaskId ?? "task"}
+                    {typeof item.userInputRequest === "object" && item.userInputRequest !== null && "question" in item.userInputRequest
+                      ? `: ${String((item.userInputRequest as { question?: unknown }).question ?? "")}`
+                      : ""}
+                  </p>
+                ) : null}
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
                   <p>Created: {new Date(item.createdAt).toLocaleString()}</p>
                   <p>Updated: {new Date(item.updatedAt).toLocaleString()}</p>

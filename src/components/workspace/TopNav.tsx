@@ -7,7 +7,7 @@ export default function TopNav({ project }: { project?: string }) {
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-4 border-b border-white/6 bg-slate-950/60 px-6 backdrop-blur-md">
       <div className="flex items-center gap-4">
-        <div className="text-sm font-semibold text-white">{project || "Demo Project"}</div>
+        <div className="text-sm font-semibold text-white">{project || "Unnamed Project"}</div>
         <div className="hidden text-sm text-slate-400 sm:block">Overview</div>
       </div>
       <div className="flex items-center gap-3">

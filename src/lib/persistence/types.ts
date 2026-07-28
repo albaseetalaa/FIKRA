@@ -6,6 +6,7 @@ export interface ProjectRecord {
   id: string;
   name: string;
   idea: string;
+  metadata?: Record<string, unknown> | null;
   status: ExecutionStatus;
   activePipelineId: string;
   createdAt: string;
@@ -70,6 +71,9 @@ export interface ProjectHistoryItem {
   status: ExecutionStatus;
   createdAt: string;
   updatedAt: string;
+  workflowStatus?: string | null;
+  pausedTaskId?: string | null;
+  userInputRequest?: unknown | null;
 }
 
 export interface ProjectStatusView {
@@ -82,4 +86,30 @@ export interface ProjectStatusView {
   startedAt: string | null;
   completedAt: string | null;
   businessPlan: unknown | null;
+  marketResearchReport: unknown | null;
+  financialModel: unknown | null;
+  projectScore?: unknown | null;
+  workflowStatus?: string | null;
+  pausedTaskId?: string | null;
+  userInputRequest?: unknown | null;
+  capabilities?: unknown[];
+}
+
+export interface WorkflowCheckpointRecord {
+  workflowRunId: string;
+  projectId: string;
+  currentTaskId: string;
+  workflowStatus: string;
+  taskStatus: string;
+  completedTaskIds: string[];
+  pendingTaskIds: string[];
+  dependencyState: Record<string, string[]>;
+  attemptCounters: Record<string, number>;
+  executionContext: Record<string, unknown>;
+  userInputRequest: Record<string, unknown>;
+  requestId: string;
+  checkpointVersion: number;
+  requestConsumedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

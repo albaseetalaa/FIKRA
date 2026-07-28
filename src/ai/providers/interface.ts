@@ -2,6 +2,9 @@ export interface InvokeOptions {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  outputModel?: string;
+  agentId?: string;
+  timeoutMs?: number;
   stream?: boolean;
   [key: string]: unknown;
 }

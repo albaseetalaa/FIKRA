@@ -1,7 +1,21 @@
-import { InMemoryArtifactStoreV2, InMemoryAttemptRepository, InMemoryProjectRepository, InMemoryWorkflowRunRepository, InMemoryWorkflowTaskRepository } from "./memory/repositories";
+import {
+  InMemoryArtifactStoreV2,
+  InMemoryAttemptRepository,
+  InMemoryProjectRepository,
+  InMemoryWorkflowCheckpointRepository,
+  InMemoryWorkflowRunRepository,
+  InMemoryWorkflowTaskRepository,
+} from "./memory/repositories";
 import type { PersistenceContainer } from "./interfaces";
 import { createAdminClient } from "../supabase/admin";
-import { SupabaseArtifactStore, SupabaseAttemptRepository, SupabaseProjectRepository, SupabaseWorkflowRunRepository, SupabaseWorkflowTaskRepository } from "./supabase/repositories";
+import {
+  SupabaseArtifactStore,
+  SupabaseAttemptRepository,
+  SupabaseProjectRepository,
+  SupabaseWorkflowCheckpointRepository,
+  SupabaseWorkflowRunRepository,
+  SupabaseWorkflowTaskRepository,
+} from "./supabase/repositories";
 import type { PersistenceProvider } from "./types";
 
 let globalContainer: PersistenceContainer | null = null;
@@ -34,6 +48,7 @@ export function getPersistenceContainer(): PersistenceContainer {
       workflowRuns: new SupabaseWorkflowRunRepository(db),
       workflowTasks: new SupabaseWorkflowTaskRepository(db),
       attempts: new SupabaseAttemptRepository(db),
+      checkpoints: new SupabaseWorkflowCheckpointRepository(db),
       artifacts: new SupabaseArtifactStore(db),
     };
     return globalContainer;
@@ -45,6 +60,7 @@ export function getPersistenceContainer(): PersistenceContainer {
     workflowRuns: new InMemoryWorkflowRunRepository(),
     workflowTasks: new InMemoryWorkflowTaskRepository(),
     attempts: new InMemoryAttemptRepository(),
+    checkpoints: new InMemoryWorkflowCheckpointRepository(),
     artifacts: new InMemoryArtifactStoreV2(),
   };
 

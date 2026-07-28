@@ -1,5 +1,6 @@
 import { AgentID } from "../types/agents";
 import { getAgentProvider, getAgentModel } from "../config";
+import { getOutputBudget } from "./outputBudgets";
 
 export interface ModelConfig {
   provider: string; // provider id, e.g., 'mock' or 'openai'
@@ -14,22 +15,22 @@ const defaultModels: Record<AgentID, ModelConfig> = {
     provider: getAgentProvider("business_strategist"),
     model: getAgentModel("business_strategist"),
     temperature: 0.2,
-    maxTokens: 800,
+    maxTokens: getOutputBudget("BusinessPlan").base,
     timeoutMs: 60000,
   },
   market_research: {
     provider: getAgentProvider("market_research"),
     model: getAgentModel("market_research"),
     temperature: 0.2,
-    maxTokens: 800,
+    maxTokens: getOutputBudget("MarketResearchReport").base,
     timeoutMs: 15000,
   },
   financial_analyst: {
     provider: getAgentProvider("financial_analyst"),
     model: getAgentModel("financial_analyst"),
     temperature: 0.2,
-    maxTokens: 800,
-    timeoutMs: 15000,
+    maxTokens: getOutputBudget("FinancialModel").base,
+    timeoutMs: 60000,
   },
   brand_strategist: {
     provider: getAgentProvider("brand_strategist"),

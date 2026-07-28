@@ -27,7 +27,13 @@ export function buildProjectName(idea: string) {
   return words.join(" ") || "New Project";
 }
 
-export function buildProjectStatusView(project: ProjectRecord, run: WorkflowRunRecord | null, businessPlanArtifact: ArtifactRecord | null): ProjectStatusView {
+export function buildProjectStatusView(
+  project: ProjectRecord,
+  run: WorkflowRunRecord | null,
+  businessPlanArtifact: ArtifactRecord | null,
+  marketResearchArtifact: ArtifactRecord | null,
+  financialModelArtifact: ArtifactRecord | null,
+): ProjectStatusView {
   return {
     projectId: project.id,
     name: project.name,
@@ -38,6 +44,8 @@ export function buildProjectStatusView(project: ProjectRecord, run: WorkflowRunR
     startedAt: run?.startedAt ?? null,
     completedAt: project.completedAt,
     businessPlan: businessPlanArtifact?.content ?? null,
+    marketResearchReport: marketResearchArtifact?.content ?? null,
+    financialModel: financialModelArtifact?.content ?? null,
   };
 }
 

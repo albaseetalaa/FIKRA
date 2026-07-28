@@ -11,40 +11,55 @@ describe("Orchestrator storage and provider flow", () => {
     (globalArtifactStore as InMemoryArtifactStore).clear();
   });
 
-  it("stores valid orchestrator output", async () => {
+  it("stores valid three-agent orchestrator outputs", async () => {
     const orch = new Orchestrator(pipelines, agents);
     orch.registerMockResponse("business_strategist", mocks.validBusinessPlan);
-    const tasks = await orch.startPipeline("project_creation", "proj-store-1");
-    const task = tasks.find((t) => t.step.agent === "business_strategist");
+    orch.registerMockResponse("market_research", mocks.validMarketResearchReport);
+    orch.registerMockResponse("financial_analyst", mocks.validFinancialModel);
+    const tasks = await orch.startPipeline("business_strategist_market_research", "proj-store-1", { projectIdea: "Idea" }, "run-store-1");
 
-    expect(task).toBeDefined();
-    expect(task?.status).toBe("completed");
+    expect(tasks.every((task) => task.status === "completed")).toBe(true);
     const saved = await globalArtifactStore.list("proj-store-1");
-    expect(saved.length).toBeGreaterThan(0);
-    expect(saved[0]).toBeDefined();
-    expect(saved[0]?.validationStatus).toBe("valid");
-    expect(saved[0]?.projectId).toBe("proj-store-1");
+    const businessPlans = saved.filter((item) => item.outputType === "BusinessPlan");
+    const marketReports = saved.filter((item) => item.outputType === "MarketResearchReport");
+    const financialModels = saved.filter((item) => item.outputType === "FinancialModel");
+    expect(businessPlans.length).toBe(1);
+    expect(marketReports.length).toBe(1);
+    expect(financialModels.length).toBe(1);
+    expect(saved.every((item) => typeof item.taskId === "string" && item.taskId.startsWith("run-store-1:"))).toBe(true);
+    expect(saved.every((item) => item.validationStatus === "valid")).toBe(true);
   });
 
-  it("does not store invalid orchestrator output", async () => {
-    const orch = new Orchestrator(pipelines, agents);
-    orch.registerMockResponse("business_strategist", mocks.invalidBusinessPlan);
-    const tasks = await orch.startPipeline("project_creation", "proj-store-2");
-    const task = tasks.find((t) => t.step.agent === "business_strategist");
-
-    expect(task).toBeDefined();
-    expect(task?.status).toBe("failed");
-    const saved = await globalArtifactStore.list("proj-store-2");
-    expect(saved.length).toBe(0);
-  });
-
-  it("executes full provider → normalize → validate → store flow", async () => {
+  it("isolates financial failure without deleting strategist and market artifacts", async () => {
     const orch = new Orchestrator(pipelines, agents);
     orch.registerMockResponse("business_strategist", mocks.validBusinessPlan);
-    const tasks = await orch.startPipeline("project_creation", "proj-flow-1");
-    expect(tasks.some((task) => task.status === "completed")).toBe(true);
+    orch.registerMockResponse("market_research", mocks.validMarketResearchReport);
+    orch.registerMockResponse("financial_analyst", { startupCosts: "bad" });
+    const tasks = await orch.startPipeline("business_strategist_market_research", "proj-store-2", { projectIdea: "Idea" }, "run-store-2");
+
+    const businessTask = tasks.find((task) => task.step.agent === "business_strategist");
+    const marketTask = tasks.find((task) => task.step.agent === "market_research");
+    const financialTask = tasks.find((task) => task.step.agent === "financial_analyst");
+    expect(businessTask?.status).toBe("completed");
+    expect(marketTask?.status).toBe("completed");
+    expect(financialTask?.status).toBe("failed");
+    const saved = await globalArtifactStore.list("proj-store-2");
+    expect(saved.filter((item) => item.outputType === "BusinessPlan").length).toBe(1);
+    expect(saved.filter((item) => item.outputType === "MarketResearchReport").length).toBe(1);
+    expect(saved.filter((item) => item.outputType === "FinancialModel").length).toBe(0);
+  });
+
+  it("executes full provider → normalize → validate → store flow for three agents", async () => {
+    const orch = new Orchestrator(pipelines, agents);
+    orch.registerMockResponse("business_strategist", mocks.validBusinessPlan);
+    orch.registerMockResponse("market_research", mocks.validMarketResearchReport);
+    orch.registerMockResponse("financial_analyst", mocks.validFinancialModel);
+    const tasks = await orch.startPipeline("business_strategist_market_research", "proj-flow-1", { projectIdea: "Idea" }, "run-flow-1");
+    expect(tasks.every((task) => task.status === "completed")).toBe(true);
     const saved = await globalArtifactStore.list("proj-flow-1");
-    expect(saved.length).toBeGreaterThan(0);
-    expect(saved[0]?.content).toEqual(mocks.validBusinessPlan);
+    expect(saved.length).toBe(3);
+    expect(saved.some((artifact) => artifact.outputType === "BusinessPlan" && JSON.stringify(artifact.content) === JSON.stringify(mocks.validBusinessPlan))).toBe(true);
+    expect(saved.some((artifact) => artifact.outputType === "MarketResearchReport" && JSON.stringify(artifact.content) === JSON.stringify(mocks.validMarketResearchReport))).toBe(true);
+    expect(saved.some((artifact) => artifact.outputType === "FinancialModel" && JSON.stringify(artifact.content) === JSON.stringify(mocks.validFinancialModel))).toBe(true);
   });
 });

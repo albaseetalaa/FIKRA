@@ -19,7 +19,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ projectId: str
       errorMessage: project.errorMessage,
       startedAt: project.startedAt,
       completedAt: project.completedAt,
+      workflowStatus: project.workflowStatus,
+      pausedTaskId: project.pausedTaskId,
+      userInputRequest: project.userInputRequest,
+      capabilities: project.capabilities ?? [],
       businessPlan: project.businessPlan,
+      marketResearchReport: project.marketResearchReport,
+      financialModel: project.financialModel,
+      projectScore: project.projectScore ?? null,
     });
   } catch {
     return NextResponse.json({ error: "Could not fetch project status." }, { status: 500 });

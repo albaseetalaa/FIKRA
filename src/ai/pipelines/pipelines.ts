@@ -25,7 +25,7 @@ export const pipelines: Pipeline[] = [
       { id: "p1-step3", agent: "naming_expert", description: "Generate names", dependsOn: ["p1-step1"] },
     ],
     requiredAgents: ["business_strategist", "market_research", "naming_expert"],
-    expectedOutputs: ["BusinessPlan", "MarketResearch", "NameCandidates"],
+    expectedOutputs: ["BusinessPlan", "MarketResearchReport", "NameCandidates"],
   },
   {
     id: "business_planning",
@@ -82,6 +82,17 @@ export const pipelines: Pipeline[] = [
     ],
     requiredAgents: ["business_strategist"],
     expectedOutputs: ["BusinessPlan"],
+  },
+  {
+    id: "business_strategist_market_research",
+    name: "Business Strategist + Market Research",
+    steps: [
+      { id: "bs-1", agent: "business_strategist", description: "Generate a BusinessPlan" },
+      { id: "mr-1", agent: "market_research", description: "Generate a MarketResearchReport", dependsOn: ["bs-1"] },
+      { id: "fa-1", agent: "financial_analyst", description: "Generate a FinancialModel", dependsOn: ["bs-1", "mr-1"] },
+    ],
+    requiredAgents: ["business_strategist", "market_research", "financial_analyst"],
+    expectedOutputs: ["BusinessPlan", "MarketResearchReport", "FinancialModel"],
   },
 ];
 

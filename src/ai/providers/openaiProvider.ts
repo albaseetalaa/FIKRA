@@ -2,10 +2,16 @@ import type { AIProvider, InvokeOptions, ProviderHealth } from "./interface";
 import OpenAI from "openai";
 import { OPENAI_API_KEY } from "../config";
 import type { ErrorCode } from "../errors/errors";
+import type { OutputModelName } from "../types/outputs";
+import { getProviderOutputSchema, validateProviderStrictSchemaCompatibility } from "./outputSchemas";
+import type { ProjectContext } from "../context";
+import { parseProviderRawResponse } from "./responseParsing";
+import type { ProviderParsingClassification, ProviderResponseFormat } from "../types/providerOutput";
 
 type OpenAIErrorShape = Error & { code?: string; name?: string; status?: number };
 type OpenAIOutputContentPart = { text?: unknown };
 type OpenAIOutputItem = { content?: unknown; text?: unknown };
+type OpenAIParsedItem = { parsed?: unknown };
 
 export interface OpenAIResult {
   providerId: string;
@@ -24,8 +30,44 @@ export interface OpenAIResult {
     completedAt: string;
     model: string;
     provider: string;
+    finishReason?: string | null;
+    responseStatus?: string | null;
+    responseFormat?: ProviderResponseFormat;
+    outputType?: OutputModelName | null;
+    parsingClassification?: ProviderParsingClassification;
+    parsingStage?: string;
+    incompleteReason?: string | null;
+    responseCharLength?: number;
+    configuredMaxOutputTokens?: number;
+    parsedJson: boolean;
+    rawResponseAvailable: boolean;
+    rawResponseTruncated: boolean;
+    refusalDetected: boolean;
+    truncatedDetected: boolean;
   };
 }
+
+type OpenAIInvokeOptions = InvokeOptions & {
+  outputModel?: OutputModelName;
+  projectContext?: ProjectContext;
+};
+
+type ExtractionResult = {
+  output: unknown;
+  parsedJson: boolean;
+  rawResponseAvailable: boolean;
+  rawResponseTruncated: boolean;
+  refusalDetected: boolean;
+  truncatedDetected: boolean;
+  finishReason: string | null;
+  responseStatus: string | null;
+  responseFormat: ProviderResponseFormat;
+  outputType: OutputModelName | null;
+  parsingClassification: ProviderParsingClassification;
+  parsingStage: string;
+  incompleteReason: string | null;
+  responseCharLength: number;
+};
 
 export class OpenAIProviderError extends Error {
   code: ErrorCode;
@@ -54,7 +96,7 @@ export class OpenAIProvider implements AIProvider {
     }
   }
 
-  async invoke(prompt: string, options?: InvokeOptions) {
+  async invoke(prompt: string, options?: OpenAIInvokeOptions) {
     if (!this.client) {
       throw new Error("OpenAI API key not configured");
     }
@@ -74,15 +116,38 @@ export class OpenAIProvider implements AIProvider {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await this.client.responses.create(
-        {
-          model,
-          input: prompt,
-          temperature,
-          max_output_tokens: maxTokens,
-        },
-        { signal: controller.signal },
-      );
+      const requestBody: Record<string, unknown> = {
+        model,
+        input: prompt,
+        temperature,
+        max_output_tokens: maxTokens,
+      };
+
+      const outputModel = options?.outputModel;
+      const providerSchema = getProviderOutputSchema(outputModel, options?.projectContext);
+      if (outputModel && providerSchema) {
+        const compatibility = validateProviderStrictSchemaCompatibility(providerSchema);
+        if (!compatibility.ok) {
+          throw new OpenAIProviderError(
+            "OPENAI_UNKNOWN_ERROR",
+            `Provider schema compatibility check failed for ${outputModel}: ${compatibility.errors.join(" | ")}`,
+            false,
+            this.id,
+            model,
+          );
+        }
+
+        requestBody.text = {
+          format: {
+            type: "json_schema",
+            name: outputModel,
+            schema: providerSchema,
+            strict: true,
+          },
+        };
+      }
+
+      const response = await this.client.responses.create(requestBody as never, { signal: controller.signal });
 
       metadata.completedAt = new Date().toISOString();
       const completedAt = Date.now();
@@ -94,17 +159,33 @@ export class OpenAIProvider implements AIProvider {
         totalTokens: typeof response?.usage?.total_tokens === "number" ? response.usage.total_tokens : undefined,
       };
 
-      const output = this.extractOutput(response);
+      const extraction = this.extractOutput(response, options?.outputModel);
 
       return {
         providerId: this.id,
         model,
         requestId: response.id ?? null,
         success: true,
-        output,
+        output: extraction.output,
         usage,
         latencyMs,
-        metadata,
+        metadata: {
+          ...metadata,
+          finishReason: extraction.finishReason,
+          responseStatus: extraction.responseStatus,
+          responseFormat: extraction.responseFormat,
+          outputType: extraction.outputType,
+          parsingClassification: extraction.parsingClassification,
+          parsingStage: extraction.parsingStage,
+          incompleteReason: extraction.incompleteReason,
+          responseCharLength: extraction.responseCharLength,
+          configuredMaxOutputTokens: maxTokens,
+          parsedJson: extraction.parsedJson,
+          rawResponseAvailable: extraction.rawResponseAvailable,
+          rawResponseTruncated: extraction.rawResponseTruncated,
+          refusalDetected: extraction.refusalDetected,
+          truncatedDetected: extraction.truncatedDetected,
+        },
       };
     } catch (error: unknown) {
       const openAiError = error as OpenAIErrorShape;
@@ -189,20 +270,107 @@ export class OpenAIProvider implements AIProvider {
     return Boolean(this.client);
   }
 
-  private extractOutput(response: unknown): unknown {
+  private extractOutput(response: unknown, outputModel?: OutputModelName): ExtractionResult {
     const resp = response as {
       output?: unknown;
       output_text?: unknown;
       content?: unknown;
       response?: unknown;
+      status?: unknown;
+      incomplete_details?: { reason?: unknown };
+      text?: { format?: { type?: unknown } };
     };
 
-    if (!response) return null;
-    if (typeof resp.output === "string") {
-      return this.tryParseJson(resp.output);
+    const responseStatus = typeof resp.status === "string" ? resp.status : null;
+    const finishReason = typeof resp.incomplete_details?.reason === "string" ? resp.incomplete_details.reason : null;
+    const responseFormat: ProviderResponseFormat =
+      resp.text && typeof resp.text === "object"
+      && typeof (resp.text as { format?: { type?: unknown } }).format?.type === "string"
+        ? ((resp.text as { format?: { type?: ProviderResponseFormat } }).format?.type ?? "unknown")
+        : "unknown";
+    const incompleteReason = finishReason;
+    const isIncompleteResponse = responseStatus === "incomplete" || finishReason === "max_output_tokens";
+
+    const base = {
+      parsedJson: false,
+      rawResponseAvailable: false,
+      rawResponseTruncated: false,
+      refusalDetected: false,
+      truncatedDetected: false,
+      finishReason,
+      responseStatus,
+      responseFormat,
+      outputType: outputModel ?? null,
+      parsingClassification: "non_json_prose" as ProviderParsingClassification,
+      parsingStage: "json_parse_failed",
+      incompleteReason,
+      responseCharLength: 0,
+    };
+
+    if (!response) {
+      return {
+        output: null,
+        ...base,
+      };
     }
 
     if (Array.isArray(resp.output)) {
+      for (const item of resp.output) {
+        const typed = item as OpenAIParsedItem;
+        if (typed && typeof typed === "object" && "parsed" in typed) {
+          const parsed = typed.parsed;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return {
+              output: parsed,
+              ...base,
+              parsedJson: true,
+              rawResponseAvailable: true,
+              parsingClassification: "native_structured_object",
+              parsingStage: "provider_native_parsed",
+            };
+          }
+        }
+      }
+    }
+
+    const parseText = (text: string) =>
+      parseProviderRawResponse(text, {
+        allowStringWrappedJson: true,
+        allowSingleJsonCodeFence: true,
+        isIncompleteResponse,
+      });
+
+    if (typeof resp.output === "string") {
+      const parsed = parseText(resp.output);
+      return {
+        output: parsed.value,
+        ...base,
+        parsedJson: parsed.parseSucceeded,
+        rawResponseAvailable: true,
+        rawResponseTruncated: parsed.rawResponseTruncated,
+        parsingClassification: parsed.classification,
+        parsingStage: parsed.usedStringUnwrap
+          ? "string_unwrap"
+          : parsed.usedMarkdownCodeFenceStrip
+            ? "markdown_json_strip"
+            : parsed.parseSucceeded
+              ? "json_text_parse"
+              : "json_parse_failed",
+        responseCharLength: parsed.responseCharLength,
+        truncatedDetected: parsed.rawResponseTruncated,
+      };
+    }
+
+    if (Array.isArray(resp.output)) {
+      const refusalDetected = resp.output.some((item) => {
+        const typed = item as { type?: unknown; content?: unknown };
+        if (typed.type === "refusal") return true;
+        if (Array.isArray(typed.content)) {
+          return typed.content.some((segment) => (segment as { type?: unknown }).type === "refusal");
+        }
+        return false;
+      });
+
       const text = resp.output
         .map((item) => {
           if (typeof item === "string") return item;
@@ -222,16 +390,71 @@ export class OpenAIProvider implements AIProvider {
           return "";
         })
         .join("");
-      return this.tryParseJson(text) ?? text;
+      const parsed = parseText(text);
+      const parsingClassification = refusalDetected && !parsed.parseSucceeded
+        ? "provider_refusal"
+        : parsed.classification;
+      return {
+        output: parsed.value,
+        ...base,
+        parsedJson: parsed.parseSucceeded,
+        rawResponseAvailable: text.trim().length > 0,
+        rawResponseTruncated: parsed.rawResponseTruncated,
+        parsingClassification,
+        parsingStage: parsed.usedStringUnwrap
+          ? "string_unwrap"
+          : parsed.usedMarkdownCodeFenceStrip
+            ? "markdown_json_strip"
+            : parsed.parseSucceeded
+              ? "json_text_parse"
+              : "json_parse_failed",
+        responseCharLength: parsed.responseCharLength,
+        refusalDetected,
+        truncatedDetected: parsed.rawResponseTruncated,
+      };
     }
 
     if (typeof resp.output_text === "string") {
-      return this.tryParseJson(resp.output_text) ?? resp.output_text;
+      const parsed = parseText(resp.output_text);
+      return {
+        output: parsed.value,
+        ...base,
+        parsedJson: parsed.parseSucceeded,
+        rawResponseAvailable: true,
+        rawResponseTruncated: parsed.rawResponseTruncated,
+        parsingClassification: parsed.classification,
+        parsingStage: parsed.usedStringUnwrap
+          ? "string_unwrap"
+          : parsed.usedMarkdownCodeFenceStrip
+            ? "markdown_json_strip"
+            : parsed.parseSucceeded
+              ? "json_text_parse"
+              : "json_parse_failed",
+        responseCharLength: parsed.responseCharLength,
+        truncatedDetected: parsed.rawResponseTruncated,
+      };
     }
 
     if (resp.content) {
       if (typeof resp.content === "string") {
-        return this.tryParseJson(resp.content) ?? resp.content;
+        const parsed = parseText(resp.content);
+        return {
+          output: parsed.value,
+          ...base,
+          parsedJson: parsed.parseSucceeded,
+          rawResponseAvailable: true,
+          rawResponseTruncated: parsed.rawResponseTruncated,
+          parsingClassification: parsed.classification,
+          parsingStage: parsed.usedStringUnwrap
+            ? "string_unwrap"
+            : parsed.usedMarkdownCodeFenceStrip
+              ? "markdown_json_strip"
+              : parsed.parseSucceeded
+                ? "json_text_parse"
+                : "json_parse_failed",
+          responseCharLength: parsed.responseCharLength,
+          truncatedDetected: parsed.rawResponseTruncated,
+        };
       }
       if (Array.isArray(resp.content)) {
         const text = resp.content
@@ -241,25 +464,41 @@ export class OpenAIProvider implements AIProvider {
             return typeof typed.text === "string" ? typed.text : "";
           })
           .join("");
-        return this.tryParseJson(text) ?? text;
+        const parsed = parseText(text);
+        return {
+          output: parsed.value,
+          ...base,
+          parsedJson: parsed.parseSucceeded,
+          rawResponseAvailable: text.trim().length > 0,
+          rawResponseTruncated: parsed.rawResponseTruncated,
+          parsingClassification: parsed.classification,
+          parsingStage: parsed.usedStringUnwrap
+            ? "string_unwrap"
+            : parsed.usedMarkdownCodeFenceStrip
+              ? "markdown_json_strip"
+              : parsed.parseSucceeded
+                ? "json_text_parse"
+                : "json_parse_failed",
+          responseCharLength: parsed.responseCharLength,
+          truncatedDetected: parsed.rawResponseTruncated,
+        };
       }
     }
 
     const nested = resp.response as { output?: unknown } | undefined;
     if (nested?.output) {
-      return this.extractOutput(resp.response);
+      return this.extractOutput(resp.response, outputModel);
     }
 
-    return response;
-  }
-
-  private tryParseJson(value: unknown) {
-    if (typeof value !== "string") return null;
-    try {
-      return JSON.parse(value);
-    } catch {
-      return null;
-    }
+    return {
+      output: response,
+      ...base,
+      rawResponseAvailable: true,
+      rawResponseTruncated: finishReason === "max_output_tokens",
+      parsingClassification: finishReason === "max_output_tokens" ? "truncated_json" : "non_json_prose",
+      parsingStage: "json_parse_failed",
+      truncatedDetected: finishReason === "max_output_tokens",
+    };
   }
 }
 
