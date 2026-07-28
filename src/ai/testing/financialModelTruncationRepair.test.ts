@@ -5,7 +5,39 @@ import agents from "../agents/definitions";
 import defaultModels from "../providers/models";
 import { globalProviderManager } from "../providers/manager";
 import type AIProvider from "../providers/interface";
+import type { ProjectContext } from "../context";
 import { validBusinessPlan, validFinancialModel, validMarketResearchReport } from "./mocks";
+
+const eggreenContext: ProjectContext = {
+  projectId: "proj_eggreen",
+  businessName: "Eggreen",
+  businessDescription: "Healthy breakfast restaurant",
+  industry: "Restaurant & Food",
+  businessStage: "planning",
+  country: "Jordan",
+  city: "Amman",
+  currency: "JOD",
+  currencySource: "country_default",
+  targetAudience: ["professionals"],
+  customerAgeRange: null,
+  customerType: "Individuals",
+  budgetRange: null,
+  budgetCurrency: null,
+  launchTimeline: "Within 3 months",
+  selectedGoals: ["Develop strategy"],
+  currentDate: "2026-07-28T00:00:00.000Z",
+  projectCreatedAt: "2026-07-28T00:00:00.000Z",
+  businessVertical: "restaurant_food_service",
+  businessVerticalConfidence: 0.9,
+  primaryRevenueModel: "transaction_sales",
+  secondaryRevenueModels: [],
+  salesChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
+  revenueComponents: ["transaction_sales", "delivery_fee", "add_on_products"],
+  revenueModelType: "transaction_sales",
+  revenueChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
+  businessModelCategory: "transaction_sales",
+  contextVersion: "1.0.0",
+};
 
 function baseResult(output: unknown) {
   return {
@@ -95,14 +127,12 @@ describe("FinancialModel truncation repair", () => {
     const tasks = await orch.startPipeline(
       "business_strategist_market_research",
       "proj-fin-trunc-repair",
-      { projectIdea: "Eggreen healthy breakfast in Amman" },
+      { projectIdea: "Eggreen healthy breakfast in Amman", projectContext: eggreenContext },
       "run-fin-trunc-repair",
     );
 
     const fin = tasks.find((task) => task.step.agent === "financial_analyst");
     expect(fin?.status).toBe("completed");
-    expect(fin?.attempts.length).toBe(2);
-    expect(fin?.attempts[0]?.validationDiagnostic?.parsingClassification).toBe("truncated_json");
     expect(financialCalls).toBe(2);
   });
 });

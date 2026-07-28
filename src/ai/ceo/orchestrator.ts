@@ -18,22 +18,12 @@ import type { ExecutionPlan } from "../types/outputs";
 import { TaskStateMachine, WorkflowStateMachine, type TaskStatus } from "../workflow/stateMachine";
 import type { Clock } from "../../lib/time/clock";
 import { systemClock } from "../../lib/time/clock";
+import type { AgentRegistry } from "../sdk/agentRegistry";
+import { globalAgentRegistry } from "../sdk/setup";
 
 const CEO_AGENT_ID = "ceo_orchestrator";
 
 type DependencyGraph = Record<string, string[]>;
-
-const dependencyTemplate: DependencyGraph = {
-  business_strategist: [],
-  market_research: ["business_strategist"],
-  financial_analyst: ["business_strategist", "market_research"],
-};
-
-const agentPriority: Record<string, number> = {
-  business_strategist: 1,
-  market_research: 2,
-  financial_analyst: 3,
-};
 
 export type CeoExecutionState = {
   status: ExecutionPlan["currentStatus"];
@@ -71,13 +61,10 @@ export interface CeoOrchestratorOptions {
   retryPolicy?: RetryPolicy;
   sleepFn?: SleepFunction;
   clock?: Clock;
+  agentRegistry?: AgentRegistry;
 }
 
-function unique(values: string[]) {
-  return Array.from(new Set(values));
-}
-
-function toTopologicalOrder(selectedAgents: string[], graph: DependencyGraph) {
+function toTopologicalOrder(selectedAgents: string[], graph: DependencyGraph, rankByAgent: Record<string, number>) {
   const indegree = new Map<string, number>();
   const outgoing = new Map<string, string[]>();
 
@@ -97,7 +84,7 @@ function toTopologicalOrder(selectedAgents: string[], graph: DependencyGraph) {
 
   const queue = selectedAgents
     .filter((agent) => (indegree.get(agent) ?? 0) === 0)
-    .sort((a, b) => (agentPriority[a] ?? 99) - (agentPriority[b] ?? 99));
+    .sort((a, b) => (rankByAgent[a] ?? 999) - (rankByAgent[b] ?? 999));
 
   const ordered: string[] = [];
   while (queue.length > 0) {
@@ -110,7 +97,7 @@ function toTopologicalOrder(selectedAgents: string[], graph: DependencyGraph) {
       indegree.set(dependent, next);
       if (next === 0) {
         queue.push(dependent);
-        queue.sort((a, b) => (agentPriority[a] ?? 99) - (agentPriority[b] ?? 99));
+        queue.sort((a, b) => (rankByAgent[a] ?? 999) - (rankByAgent[b] ?? 999));
       }
     }
   }
@@ -130,6 +117,7 @@ export class CEOOrchestrator {
   private readonly retryEngine: RetryEngine;
   private readonly mockResponses: Map<string, unknown[]> = new Map();
   private readonly clock: Clock;
+  private readonly agentRegistry: AgentRegistry;
 
   constructor(
     pipelines: Pipeline[] = defaultPipelines,
@@ -142,6 +130,7 @@ export class CEOOrchestrator {
     this.hooks = options.hooks;
     this.retryEngine = new RetryEngine(options.retryPolicy ?? defaultRetryPolicy, options.sleepFn);
     this.clock = options.clock ?? systemClock;
+    this.agentRegistry = options.agentRegistry ?? globalAgentRegistry;
   }
 
   inspectProjectRequest(projectIdea: string) {
@@ -165,21 +154,33 @@ export class CEOOrchestrator {
     const shouldRunStrategyOnly = /strategy\s+only|strategist\s+only|business\s+plan\s+only/i.test(inspection.normalizedIdea);
     const financialSignals = /(financial|revenue|pricing|cost|budget|funding|profit|break[- ]?even|model)/i.test(inspection.normalizedIdea);
 
-    const selectedAgents = unique([
-      "business_strategist",
-      ...(shouldRunStrategyOnly ? [] : ["market_research"]),
-      ...(shouldRunStrategyOnly ? [] : ["financial_analyst"]),
-      ...(financialSignals ? ["financial_analyst"] : []),
-    ]);
+    const enabledDefinitions = this.agentRegistry.listEnabled();
+    const rankByAgent = enabledDefinitions.reduce<Record<string, number>>((acc, definition, index) => {
+      acc[definition.id] = index;
+      return acc;
+    }, {});
+
+    const defaultSelected = enabledDefinitions.map((definition) => definition.id);
+    const selectedAgents = shouldRunStrategyOnly
+      ? enabledDefinitions
+        .filter((definition) => definition.category === "strategy")
+        .map((definition) => definition.id)
+      : defaultSelected;
+
+    if (financialSignals && !selectedAgents.includes("financial_analyst") && this.agentRegistry.getById("financial_analyst")?.enabled) {
+      selectedAgents.push("financial_analyst");
+    }
 
     const dependencyGraph: DependencyGraph = {};
     for (const agent of selectedAgents) {
-      dependencyGraph[agent] = (dependencyTemplate[agent] ?? []).filter((dependency) => selectedAgents.includes(dependency));
+      const definition = this.agentRegistry.getById(agent as AgentID);
+      const dependencies = definition?.dependencies ?? [];
+      dependencyGraph[agent] = dependencies.filter((dependency) => selectedAgents.includes(dependency));
     }
 
-    const executionOrder = toTopologicalOrder(selectedAgents, dependencyGraph);
+    const executionOrder = toTopologicalOrder(selectedAgents, dependencyGraph, rankByAgent);
     const expectedArtifacts = selectedAgents.reduce<string[]>((acc, agentId) => {
-      const outputModel = this.agents.find((agent) => agent.id === (agentId as AgentID))?.outputModel;
+      const outputModel = this.agentRegistry.getById(agentId as AgentID)?.outputArtifactType;
       if (typeof outputModel === "string") {
         acc.push(outputModel);
       }

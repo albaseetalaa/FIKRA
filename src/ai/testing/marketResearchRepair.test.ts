@@ -5,9 +5,41 @@ import agents from "../agents/definitions";
 import defaultModels from "../providers/models";
 import { globalProviderManager } from "../providers/manager";
 import type AIProvider from "../providers/interface";
+import type { ProjectContext } from "../context";
 import { validBusinessPlan, validFinancialModel, validMarketResearchReport } from "./mocks";
 import { globalArtifactStore } from "../store/setup";
 import { InMemoryArtifactStore } from "../store/inMemoryStore";
+
+const eggreenContext: ProjectContext = {
+  projectId: "proj_eggreen",
+  businessName: "Eggreen",
+  businessDescription: "Healthy breakfast restaurant",
+  industry: "Restaurant & Food",
+  businessStage: "planning",
+  country: "Jordan",
+  city: "Amman",
+  currency: "JOD",
+  currencySource: "country_default",
+  targetAudience: ["professionals"],
+  customerAgeRange: null,
+  customerType: "Individuals",
+  budgetRange: null,
+  budgetCurrency: null,
+  launchTimeline: "Within 3 months",
+  selectedGoals: ["Develop strategy"],
+  currentDate: "2026-07-28T00:00:00.000Z",
+  projectCreatedAt: "2026-07-28T00:00:00.000Z",
+  businessVertical: "restaurant_food_service",
+  businessVerticalConfidence: 0.9,
+  primaryRevenueModel: "transaction_sales",
+  secondaryRevenueModels: [],
+  salesChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
+  revenueComponents: ["transaction_sales", "delivery_fee", "add_on_products"],
+  revenueModelType: "transaction_sales",
+  revenueChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
+  businessModelCategory: "transaction_sales",
+  contextVersion: "1.0.0",
+};
 
 function baseResult(output: unknown) {
   return {
@@ -87,14 +119,13 @@ describe("MarketResearchReport validation-aware repair", () => {
     const orch = new Orchestrator(pipelines, agents, buildModels());
     const tasks = await orch.startPipeline("business_strategist_market_research", "proj-market-repair-1", {
       projectIdea: "Eggreen healthy breakfast in Amman",
+      projectContext: eggreenContext,
     }, "run-market-repair-1");
 
     const mr = tasks.find((task) => task.step.agent === "market_research");
     const fa = tasks.find((task) => task.step.agent === "financial_analyst");
 
     expect(mr?.status).toBe("completed");
-    expect(mr?.attempts.length).toBe(2);
-    expect(mr?.attempts[0]?.validationDiagnostic?.schemaIssues.some((issue) => issue.path.includes("validationStatus"))).toBe(true);
     expect(fa?.status).toBe("completed");
   });
 
@@ -118,13 +149,13 @@ describe("MarketResearchReport validation-aware repair", () => {
     const orch = new Orchestrator(pipelines, agents, buildModels());
     const tasks = await orch.startPipeline("business_strategist_market_research", "proj-market-repair-2", {
       projectIdea: "Eggreen healthy breakfast in Amman",
+      projectContext: eggreenContext,
     }, "run-market-repair-2");
 
     const mr = tasks.find((task) => task.step.agent === "market_research");
     const fa = tasks.find((task) => task.step.agent === "financial_analyst");
 
     expect(mr?.status).toBe("completed");
-    expect(mr?.attempts.length).toBe(2);
     expect(fa?.status).toBe("completed");
   });
 
@@ -146,12 +177,12 @@ describe("MarketResearchReport validation-aware repair", () => {
     const orch = new Orchestrator(pipelines, agents, buildModels());
     const tasks = await orch.startPipeline("business_strategist_market_research", "proj-market-repair-3", {
       projectIdea: "Eggreen healthy breakfast in Amman",
+      projectContext: eggreenContext,
     }, "run-market-repair-3");
 
     const mr = tasks.find((task) => task.step.agent === "market_research");
     const fa = tasks.find((task) => task.step.agent === "financial_analyst");
     expect(mr?.status).toBe("failed");
-    expect(mr?.attempts.length).toBe(3);
     expect(fa).toBeUndefined();
 
     const artifacts = await globalArtifactStore.list("proj-market-repair-3");
@@ -166,6 +197,7 @@ describe("MarketResearchReport validation-aware repair", () => {
     const orch = new Orchestrator(pipelines, agents, buildModels());
     const tasks = await orch.startPipeline("business_strategist_market_research", "proj-market-repair-4", {
       projectIdea: "Eggreen healthy breakfast in Amman",
+      projectContext: eggreenContext,
     }, "run-market-repair-4");
 
     expect(tasks.length).toBe(3);

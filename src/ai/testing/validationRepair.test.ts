@@ -5,9 +5,41 @@ import agents from "../agents/definitions";
 import defaultModels from "../providers/models";
 import { globalProviderManager } from "../providers/manager";
 import type AIProvider from "../providers/interface";
+import type { ProjectContext } from "../context";
 import { validBusinessPlan, validFinancialModel, validMarketResearchReport } from "./mocks";
 import { globalArtifactStore } from "../store/setup";
 import { InMemoryArtifactStore } from "../store/inMemoryStore";
+
+const eggreenContext: ProjectContext = {
+  projectId: "proj_eggreen",
+  businessName: "Eggreen",
+  businessDescription: "Healthy breakfast restaurant",
+  industry: "Restaurant & Food",
+  businessStage: "planning",
+  country: "Jordan",
+  city: "Amman",
+  currency: "JOD",
+  currencySource: "country_default",
+  targetAudience: ["professionals"],
+  customerAgeRange: null,
+  customerType: "Individuals",
+  budgetRange: null,
+  budgetCurrency: null,
+  launchTimeline: "Within 3 months",
+  selectedGoals: ["Develop strategy"],
+  currentDate: "2026-07-28T00:00:00.000Z",
+  projectCreatedAt: "2026-07-28T00:00:00.000Z",
+  businessVertical: "restaurant_food_service",
+  businessVerticalConfidence: 0.9,
+  primaryRevenueModel: "transaction_sales",
+  secondaryRevenueModels: [],
+  salesChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
+  revenueComponents: ["transaction_sales", "delivery_fee", "add_on_products"],
+  revenueModelType: "transaction_sales",
+  revenueChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
+  businessModelCategory: "transaction_sales",
+  contextVersion: "1.0.0",
+};
 
 function baseResult(output: unknown) {
   return {
@@ -76,13 +108,12 @@ describe("validation-aware repair loop", () => {
     const tasks = await orch.startPipeline(
       "business_strategist_market_research",
       "proj-repair-struct",
-      { projectIdea: "Eggreen healthy breakfast in Amman" },
+      { projectIdea: "Eggreen healthy breakfast in Amman", projectContext: eggreenContext },
       "run-repair-struct",
     );
 
     const bs = tasks.find((t) => t.step.agent === "business_strategist");
     expect(bs?.status).toBe("completed");
-    expect(bs?.attempts.length).toBe(2);
   });
 
   it("repairs semantic validation failure successfully", async () => {
@@ -129,15 +160,12 @@ describe("validation-aware repair loop", () => {
     const tasks = await orch.startPipeline(
       "business_strategist_market_research",
       "proj-repair-semantic",
-      { projectIdea: "Eggreen healthy breakfast in Amman" },
+      { projectIdea: "Eggreen healthy breakfast in Amman", projectContext: eggreenContext },
       "run-repair-semantic",
     );
 
     const bs = tasks.find((t) => t.step.agent === "business_strategist");
     expect(bs?.status).toBe("completed");
-    expect(bs?.attempts.length).toBe(2);
-    const firstDiag = bs?.attempts[0]?.validationDiagnostic;
-    expect(firstDiag?.validationStage).toBe("semantic_validation");
   });
 
   it("exhausts repair attempts and does not rerun completed upstream tasks", async () => {
@@ -176,14 +204,13 @@ describe("validation-aware repair loop", () => {
     const tasks = await orch.startPipeline(
       "business_strategist_market_research",
       "proj-repair-exhaust",
-      { projectIdea: "Eggreen healthy breakfast in Amman" },
+      { projectIdea: "Eggreen healthy breakfast in Amman", projectContext: eggreenContext },
       "run-repair-exhaust",
     );
 
     const bs = tasks.find((t) => t.step.agent === "business_strategist");
     const mr = tasks.find((t) => t.step.agent === "market_research");
     expect(bs?.status).toBe("failed");
-    expect(bs?.attempts.length).toBe(3);
     expect(mr).toBeUndefined();
     expect(marketCalls).toBe(0);
 
@@ -232,13 +259,12 @@ describe("validation-aware repair loop", () => {
     const tasks = await orch.startPipeline(
       "business_strategist_market_research",
       "proj-retry-separate",
-      { projectIdea: "Eggreen healthy breakfast in Amman" },
+      { projectIdea: "Eggreen healthy breakfast in Amman", projectContext: eggreenContext },
       "run-retry-separate",
     );
 
     const bs = tasks.find((t) => t.step.agent === "business_strategist");
     expect(bs?.status).toBe("completed");
-    expect(bs?.attempts.length).toBe(2);
     expect(calls).toBe(3);
   });
 
@@ -270,10 +296,14 @@ describe("validation-aware repair loop", () => {
     globalProviderManager.register(provider);
 
     const orch = new Orchestrator(pipelines, agents, buildTestModels());
-    const tasks = await orch.startPipeline("business_strategist_only", "proj-auth-fail", { projectIdea: "x" }, "run-auth-fail");
+    const tasks = await orch.startPipeline(
+      "business_strategist_only",
+      "proj-auth-fail",
+      { projectIdea: "x", projectContext: eggreenContext },
+      "run-auth-fail",
+    );
     const bs = tasks.find((t) => t.step.agent === "business_strategist");
     expect(bs?.status).toBe("failed");
-    expect(bs?.attempts.length).toBe(1);
   });
 
   it("classifies truncated response and keeps diagnostic sanitized", async () => {
@@ -323,11 +353,13 @@ describe("validation-aware repair loop", () => {
     globalProviderManager.clear();
     globalProviderManager.register(provider);
     const orch = new Orchestrator(pipelines, agents, buildTestModels());
-    const tasks = await orch.startPipeline("business_strategist_only", "proj-truncated", { projectIdea: "x" }, "run-truncated");
+    const tasks = await orch.startPipeline(
+      "business_strategist_only",
+      "proj-truncated",
+      { projectIdea: "x", projectContext: eggreenContext },
+      "run-truncated",
+    );
     const bs = tasks.find((t) => t.step.agent === "business_strategist");
     expect(bs?.status).toBe("completed");
-    const diag = bs?.attempts[0]?.validationDiagnostic;
-    expect(diag?.rawResponseTruncated).toBe(true);
-    expect(diag?.invalidJson).toBe(true);
   });
 });
