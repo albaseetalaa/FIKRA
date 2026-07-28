@@ -51,13 +51,21 @@ describe("financial attempt persistence", () => {
   });
 
   it("persists unique FinancialModel attempt numbers across generation plus two repairs", async () => {
+    let strategistCalls = 0;
+    let marketCalls = 0;
     let financialCalls = 0;
     const provider: AIProvider = {
       id: "openai",
       name: "attempt-test",
       async invoke(_prompt, options) {
-        if (options?.agentId === "business_strategist") return baseResult(validBusinessPlan);
-        if (options?.agentId === "market_research") return baseResult(validMarketResearchReport);
+        if (options?.agentId === "business_strategist") {
+          strategistCalls += 1;
+          return baseResult(validBusinessPlan);
+        }
+        if (options?.agentId === "market_research") {
+          marketCalls += 1;
+          return baseResult(validMarketResearchReport);
+        }
         if (options?.agentId === "financial_analyst") {
           financialCalls += 1;
           if (financialCalls <= 2) {
@@ -148,19 +156,31 @@ describe("financial attempt persistence", () => {
     expect(strategistTask?.status).toBe("completed");
     expect(marketTask?.status).toBe("completed");
     expect(financialTask?.status).toBe("completed");
+    expect(strategistCalls).toBe(1);
+    expect(marketCalls).toBe(1);
     expect(financialCalls).toBe(3);
 
     expect(financialTask).toBeTruthy();
 
     const attempts = await repos.attempts.listByTask(financialTask!.id);
-    const attemptNumbers = attempts.map((attempt) => attempt.attemptNumber).sort((a, b) => a - b);
-    if (attemptNumbers.length > 0) {
-      expect(new Set(attemptNumbers).size).toBe(attemptNumbers.length);
-      const sortedAttempts = attempts
-        .slice()
-        .sort((left, right) => left.attemptNumber - right.attemptNumber);
-      expect(sortedAttempts[sortedAttempts.length - 1]?.status).toBe("completed");
-    }
+    expect(attempts.length).toBe(3);
+
+    const sortedAttempts = attempts
+      .slice()
+      .sort((left, right) => left.attemptNumber - right.attemptNumber);
+    const attemptNumbers = sortedAttempts.map((attempt) => attempt.attemptNumber);
+
+    expect(new Set(attemptNumbers).size).toBe(3);
+    expect(attemptNumbers[0]!).toBeLessThan(attemptNumbers[1]!);
+    expect(attemptNumbers[1]!).toBeLessThan(attemptNumbers[2]!);
+
+    expect(sortedAttempts[0]?.status).toBe("failed");
+    expect(sortedAttempts[1]?.status).toBe("failed");
+    expect(sortedAttempts[2]?.status).toBe("completed");
+
+    expect(sortedAttempts[0]?.errorCode).not.toBeNull();
+    expect(sortedAttempts[1]?.errorCode).not.toBeNull();
+    expect(sortedAttempts[2]?.errorCode).toBeNull();
 
     const artifacts = await repos.artifacts.list(created.projectId);
     const artifactTypes = artifacts.filter((item) => item.validationStatus === "valid").map((item) => item.outputType);
