@@ -5,6 +5,38 @@ import agents from "../agents/definitions";
 import mocks from "./mocks";
 import { globalArtifactStore } from "../store/setup";
 import { InMemoryArtifactStore } from "../store/inMemoryStore";
+import type { ProjectContext } from "../context";
+
+const eggreenContext: ProjectContext = {
+  projectId: "proj_eggreen",
+  businessName: "Eggreen",
+  businessDescription: "Healthy breakfast restaurant",
+  industry: "Restaurant & Food",
+  businessStage: "planning",
+  country: "Jordan",
+  city: "Amman",
+  currency: "JOD",
+  currencySource: "country_default",
+  targetAudience: ["professionals"],
+  customerAgeRange: null,
+  customerType: "Individuals",
+  budgetRange: null,
+  budgetCurrency: null,
+  launchTimeline: "Within 3 months",
+  selectedGoals: ["Develop strategy"],
+  currentDate: "2026-07-28T00:00:00.000Z",
+  projectCreatedAt: "2026-07-28T00:00:00.000Z",
+  businessVertical: "restaurant_food_service",
+  businessVerticalConfidence: 0.9,
+  primaryRevenueModel: "transaction_sales",
+  secondaryRevenueModels: [],
+  salesChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
+  revenueComponents: ["transaction_sales", "delivery_fee", "add_on_products"],
+  revenueModelType: "transaction_sales",
+  revenueChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
+  businessModelCategory: "transaction_sales",
+  contextVersion: "1.0.0",
+};
 
 describe("Orchestrator storage and provider flow", () => {
   beforeEach(() => {
@@ -16,7 +48,12 @@ describe("Orchestrator storage and provider flow", () => {
     orch.registerMockResponse("business_strategist", mocks.validBusinessPlan);
     orch.registerMockResponse("market_research", mocks.validMarketResearchReport);
     orch.registerMockResponse("financial_analyst", mocks.validFinancialModel);
-    const tasks = await orch.startPipeline("business_strategist_market_research", "proj-store-1", { projectIdea: "Idea" }, "run-store-1");
+    const tasks = await orch.startPipeline(
+      "business_strategist_market_research",
+      "proj-store-1",
+      { projectIdea: "Idea", projectContext: eggreenContext },
+      "run-store-1",
+    );
 
     expect(tasks.every((task) => task.status === "completed")).toBe(true);
     const saved = await globalArtifactStore.list("proj-store-1");
@@ -35,7 +72,12 @@ describe("Orchestrator storage and provider flow", () => {
     orch.registerMockResponse("business_strategist", mocks.validBusinessPlan);
     orch.registerMockResponse("market_research", mocks.validMarketResearchReport);
     orch.registerMockResponse("financial_analyst", { startupCosts: "bad" });
-    const tasks = await orch.startPipeline("business_strategist_market_research", "proj-store-2", { projectIdea: "Idea" }, "run-store-2");
+    const tasks = await orch.startPipeline(
+      "business_strategist_market_research",
+      "proj-store-2",
+      { projectIdea: "Idea", projectContext: eggreenContext },
+      "run-store-2",
+    );
 
     const businessTask = tasks.find((task) => task.step.agent === "business_strategist");
     const marketTask = tasks.find((task) => task.step.agent === "market_research");
@@ -54,7 +96,12 @@ describe("Orchestrator storage and provider flow", () => {
     orch.registerMockResponse("business_strategist", mocks.validBusinessPlan);
     orch.registerMockResponse("market_research", mocks.validMarketResearchReport);
     orch.registerMockResponse("financial_analyst", mocks.validFinancialModel);
-    const tasks = await orch.startPipeline("business_strategist_market_research", "proj-flow-1", { projectIdea: "Idea" }, "run-flow-1");
+    const tasks = await orch.startPipeline(
+      "business_strategist_market_research",
+      "proj-flow-1",
+      { projectIdea: "Idea", projectContext: eggreenContext },
+      "run-flow-1",
+    );
     expect(tasks.every((task) => task.status === "completed")).toBe(true);
     const saved = await globalArtifactStore.list("proj-flow-1");
     expect(saved.length).toBe(3);

@@ -7,13 +7,45 @@ import { globalArtifactStore } from "../store/setup";
 import { InMemoryArtifactStore } from "../store/inMemoryStore";
 import { globalProviderManager } from "../providers/manager";
 import type AIProvider from "../providers/interface";
+import type { ProjectContext } from "../context";
+
+const eggreenContext: ProjectContext = {
+  projectId: "proj_eggreen",
+  businessName: "Eggreen",
+  businessDescription: "Healthy breakfast restaurant",
+  industry: "Restaurant & Food",
+  businessStage: "planning",
+  country: "Jordan",
+  city: "Amman",
+  currency: "JOD",
+  currencySource: "country_default",
+  targetAudience: ["professionals"],
+  customerAgeRange: null,
+  customerType: "Individuals",
+  budgetRange: null,
+  budgetCurrency: null,
+  launchTimeline: "Within 3 months",
+  selectedGoals: ["Develop strategy"],
+  currentDate: "2026-07-28T00:00:00.000Z",
+  projectCreatedAt: "2026-07-28T00:00:00.000Z",
+  businessVertical: "restaurant_food_service",
+  businessVerticalConfidence: 0.9,
+  primaryRevenueModel: "transaction_sales",
+  secondaryRevenueModels: [],
+  salesChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
+  revenueComponents: ["transaction_sales", "delivery_fee", "add_on_products"],
+  revenueModelType: "transaction_sales",
+  revenueChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
+  businessModelCategory: "transaction_sales",
+  contextVersion: "1.0.0",
+};
 
 describe("Orchestrator validation flow", () => {
   it("stores valid agent outputs and marks task completed", async () => {
     const orch = new Orchestrator(pipelines, agents);
     // register a valid business plan for the business_strategist
     orch.registerMockResponse("business_strategist", mocks.validBusinessPlan);
-    const tasks = await orch.startPipeline("business_strategist_only", "proj-1");
+    const tasks = await orch.startPipeline("business_strategist_only", "proj-1", { projectContext: eggreenContext });
     const task = tasks.find((t) => t.step.agent === "business_strategist");
     expect(task).toBeDefined();
     expect(task?.status).toBe("completed");
@@ -26,10 +58,8 @@ describe("Orchestrator validation flow", () => {
     const task = tasks.find((t) => t.step.agent === "business_strategist");
     expect(task).toBeDefined();
     expect(task?.status).toBe("failed");
-    expect(task!.attempts.length).toBeGreaterThan(0);
-    const attempt = task!.attempts[0]!;
-    expect(attempt).toBeDefined();
-    expect(attempt.error).toBeDefined();
+    expect(task?.result?.success).toBe(false);
+    expect(task?.result?.error).toBeDefined();
   });
 
   it("handles malformed JSON as retryable then fails if retries exhausted", async () => {
@@ -40,10 +70,8 @@ describe("Orchestrator validation flow", () => {
     const task = tasks.find((t) => t.step.agent === "business_strategist");
     expect(task).toBeDefined();
     expect(task?.status).toBe("failed");
-    expect(task!.attempts.length).toBeGreaterThanOrEqual(1);
-    const attempt2 = task!.attempts[0]!;
-    expect(attempt2).toBeDefined();
-    expect(attempt2.error).toBeDefined();
+    expect(task?.result?.success).toBe(false);
+    expect(task?.result?.error).toBeDefined();
   });
 
   it("executes Business Strategist -> Market Research -> Financial Analyst in order", async () => {
@@ -58,7 +86,7 @@ describe("Orchestrator validation flow", () => {
     orch.registerMockResponse("market_research", mocks.validMarketResearchReport);
     orch.registerMockResponse("financial_analyst", mocks.validFinancialModel);
 
-    const tasks = await orch.startPipeline("business_strategist_market_research", "proj-order", { projectIdea: "Test idea" }, "run-order");
+    const tasks = await orch.startPipeline("business_strategist_market_research", "proj-order", { projectIdea: "Test idea", projectContext: eggreenContext }, "run-order");
     expect(tasks.every((task) => task.status === "completed")).toBe(true);
     expect(executionOrder).toEqual(["business_strategist", "market_research", "financial_analyst"]);
   });
@@ -71,7 +99,7 @@ describe("Orchestrator validation flow", () => {
     orch.registerMockResponse("market_research", mocks.validMarketResearchReport);
     orch.registerMockResponse("financial_analyst", { startupCosts: "bad" });
 
-    const tasks = await orch.startPipeline("business_strategist_market_research", "proj-isolation", { projectIdea: "Test idea" }, "run-isolation");
+    const tasks = await orch.startPipeline("business_strategist_market_research", "proj-isolation", { projectIdea: "Test idea", projectContext: eggreenContext }, "run-isolation");
     const businessTask = tasks.find((task) => task.step.agent === "business_strategist");
     const marketTask = tasks.find((task) => task.step.agent === "market_research");
     const financialTask = tasks.find((task) => task.step.agent === "financial_analyst");
@@ -153,7 +181,7 @@ describe("Orchestrator validation flow", () => {
 
     try {
       const projectIdea = "A modern AI-powered restaurant branding agency for startups.";
-      const tasks = await orch.startPipeline("business_strategist_market_research", "proj-context", { projectIdea }, "run-context");
+      const tasks = await orch.startPipeline("business_strategist_market_research", "proj-context", { projectIdea, projectContext: eggreenContext }, "run-context");
       expect(tasks.every((task) => task.status === "completed")).toBe(true);
 
       const marketPrompt = prompts.find((prompt) => prompt.includes("Market Research Agent"));

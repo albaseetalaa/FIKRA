@@ -18,22 +18,14 @@ import type { ExecutionPlan } from "../types/outputs";
 import { TaskStateMachine, WorkflowStateMachine, type TaskStatus } from "../workflow/stateMachine";
 import type { Clock } from "../../lib/time/clock";
 import { systemClock } from "../../lib/time/clock";
+import type { AgentRegistry } from "../sdk/agentRegistry";
+import { globalAgentRegistry } from "../sdk/setup";
+import type { AgentCapability, AgentCategory } from "../sdk";
+import type { OutputModelName } from "../types/outputs";
 
 const CEO_AGENT_ID = "ceo_orchestrator";
 
 type DependencyGraph = Record<string, string[]>;
-
-const dependencyTemplate: DependencyGraph = {
-  business_strategist: [],
-  market_research: ["business_strategist"],
-  financial_analyst: ["business_strategist", "market_research"],
-};
-
-const agentPriority: Record<string, number> = {
-  business_strategist: 1,
-  market_research: 2,
-  financial_analyst: 3,
-};
 
 export type CeoExecutionState = {
   status: ExecutionPlan["currentStatus"];
@@ -62,6 +54,10 @@ export interface CeoExecutionRequest {
   workflowRunId?: string;
   projectIdea: string;
   projectContext?: ProjectContext;
+  requestedAgentIds?: AgentID[];
+  requestedCapabilities?: AgentCapability[];
+  requestedArtifactTypes?: OutputModelName[];
+  requestedCategories?: AgentCategory[];
   userInputValues?: Record<string, unknown>;
 }
 
@@ -71,13 +67,88 @@ export interface CeoOrchestratorOptions {
   retryPolicy?: RetryPolicy;
   sleepFn?: SleepFunction;
   clock?: Clock;
+  agentRegistry?: AgentRegistry;
 }
 
-function unique(values: string[]) {
-  return Array.from(new Set(values));
+const categoryKeywordMap: Record<AgentCategory, RegExp> = {
+  strategy: /\b(strategy|strategic|positioning|business\s*plan|go[-\s]?to[-\s]?market)\b/i,
+  research: /\b(market\s*research|research|customer\s*research|competitor|market\s*sizing|validation)\b/i,
+  finance: /\b(financial|finance|revenue|pricing|cost|budget|funding|profit|break[-\s]?even|model)\b/i,
+  brand: /\b(brand|identity|logo|naming|visual\s*identity|tone\s*of\s*voice)\b/i,
+  operations: /\b(operations|process|workflow|supply\s*chain|website\s*structure|delivery\s*model)\b/i,
+  growth: /\b(growth|marketing|campaign|acquisition|retention|pitch\s*deck)\b/i,
+};
+
+function includesWord(text: string, term: string) {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`, "i").test(text);
 }
 
-function toTopologicalOrder(selectedAgents: string[], graph: DependencyGraph) {
+function inferRequestedCategories(projectIdea: string, selectedGoals: string[] = []): Set<AgentCategory> {
+  const requested = new Set<AgentCategory>();
+  const combined = `${projectIdea} ${selectedGoals.join(" ")}`;
+  for (const [category, pattern] of Object.entries(categoryKeywordMap) as Array<[AgentCategory, RegExp]>) {
+    if (pattern.test(combined)) {
+      requested.add(category);
+    }
+  }
+  return requested;
+}
+
+type ArtifactSelectionDefinition = {
+  id: string;
+  displayName: string;
+  outputArtifactType: OutputModelName;
+};
+
+function inferRequestedArtifacts(projectIdea: string, enabledDefinitions: ArtifactSelectionDefinition[]): Set<OutputModelName> {
+  const requested = new Set<OutputModelName>();
+  const normalized = projectIdea.toLowerCase();
+
+  const aliases: Array<{ outputType: OutputModelName; pattern: RegExp }> = [
+    { outputType: "BusinessPlan", pattern: /\bbusiness\s*plan\b/i },
+    { outputType: "MarketResearchReport", pattern: /\bmarket\s*research\b|\bmarket\s*report\b|\bmarket\s*sizing\b/i },
+    { outputType: "FinancialModel", pattern: /\bfinancial\s*model\b|\bfinancial\s*projection\b|\bbudget\b/i },
+    { outputType: "MarketingPlan", pattern: /\bmarketing\s*plan\b|\bcampaign\b/i },
+    { outputType: "BrandStrategy", pattern: /\bbrand\s*strategy\b|\bbrand\b/i },
+    { outputType: "WebsiteStructure", pattern: /\bwebsite\b|\bsitemap\b/i },
+  ];
+
+  for (const alias of aliases) {
+    if (alias.pattern.test(normalized)) {
+      requested.add(alias.outputType);
+    }
+  }
+
+  for (const definition of enabledDefinitions) {
+    const readableId = definition.id.replace(/_/g, " ");
+    if (
+      includesWord(normalized, definition.id)
+      || includesWord(normalized, readableId)
+      || includesWord(normalized, definition.displayName)
+    ) {
+      requested.add(definition.outputArtifactType);
+    }
+  }
+
+  return requested;
+}
+
+type PlanningPreset = {
+  id: "startup_baseline";
+  requestedCategories: AgentCategory[];
+  requestedCapabilities: AgentCapability[];
+  requestedArtifactTypes: OutputModelName[];
+};
+
+const defaultPlanningPreset: PlanningPreset = {
+  id: "startup_baseline",
+  requestedCategories: ["strategy", "research", "finance"],
+  requestedCapabilities: [],
+  requestedArtifactTypes: [],
+};
+
+function toTopologicalOrder(selectedAgents: string[], graph: DependencyGraph, rankByAgent: Record<string, number>) {
   const indegree = new Map<string, number>();
   const outgoing = new Map<string, string[]>();
 
@@ -97,7 +168,7 @@ function toTopologicalOrder(selectedAgents: string[], graph: DependencyGraph) {
 
   const queue = selectedAgents
     .filter((agent) => (indegree.get(agent) ?? 0) === 0)
-    .sort((a, b) => (agentPriority[a] ?? 99) - (agentPriority[b] ?? 99));
+    .sort((a, b) => (rankByAgent[a] ?? 999) - (rankByAgent[b] ?? 999));
 
   const ordered: string[] = [];
   while (queue.length > 0) {
@@ -110,7 +181,7 @@ function toTopologicalOrder(selectedAgents: string[], graph: DependencyGraph) {
       indegree.set(dependent, next);
       if (next === 0) {
         queue.push(dependent);
-        queue.sort((a, b) => (agentPriority[a] ?? 99) - (agentPriority[b] ?? 99));
+        queue.sort((a, b) => (rankByAgent[a] ?? 999) - (rankByAgent[b] ?? 999));
       }
     }
   }
@@ -130,6 +201,7 @@ export class CEOOrchestrator {
   private readonly retryEngine: RetryEngine;
   private readonly mockResponses: Map<string, unknown[]> = new Map();
   private readonly clock: Clock;
+  private readonly agentRegistry: AgentRegistry;
 
   constructor(
     pipelines: Pipeline[] = defaultPipelines,
@@ -142,6 +214,7 @@ export class CEOOrchestrator {
     this.hooks = options.hooks;
     this.retryEngine = new RetryEngine(options.retryPolicy ?? defaultRetryPolicy, options.sleepFn);
     this.clock = options.clock ?? systemClock;
+    this.agentRegistry = options.agentRegistry ?? globalAgentRegistry;
   }
 
   inspectProjectRequest(projectIdea: string) {
@@ -159,27 +232,128 @@ export class CEOOrchestrator {
     };
   }
 
-  determineExecutionPlan(projectIdea: string): ExecutionPlan {
+  determineExecutionPlan(projectIdea: string, selection?: {
+    projectContext?: ProjectContext;
+    requestedAgentIds?: AgentID[];
+    requestedCapabilities?: AgentCapability[];
+    requestedArtifactTypes?: OutputModelName[];
+    requestedCategories?: AgentCategory[];
+    requestPreset?: PlanningPreset;
+  }): ExecutionPlan {
     const inspection = this.inspectProjectRequest(projectIdea);
 
-    const shouldRunStrategyOnly = /strategy\s+only|strategist\s+only|business\s+plan\s+only/i.test(inspection.normalizedIdea);
-    const financialSignals = /(financial|revenue|pricing|cost|budget|funding|profit|break[- ]?even|model)/i.test(inspection.normalizedIdea);
+    const enabledDefinitions = this.agentRegistry.listEnabled();
+    const rankByAgent = enabledDefinitions.reduce<Record<string, number>>((acc, definition, index) => {
+      acc[definition.id] = index;
+      return acc;
+    }, {});
 
-    const selectedAgents = unique([
-      "business_strategist",
-      ...(shouldRunStrategyOnly ? [] : ["market_research"]),
-      ...(shouldRunStrategyOnly ? [] : ["financial_analyst"]),
-      ...(financialSignals ? ["financial_analyst"] : []),
+    const requestedCategories = new Set<AgentCategory>([
+      ...inferRequestedCategories(inspection.normalizedIdea, selection?.projectContext?.selectedGoals ?? []),
+      ...(selection?.requestedCategories ?? []),
     ]);
+    const requestedArtifacts = new Set<OutputModelName>([
+      ...inferRequestedArtifacts(inspection.normalizedIdea, enabledDefinitions),
+      ...(selection?.requestedArtifactTypes ?? []),
+    ]);
+    const requestedCapabilities = new Set<AgentCapability>(selection?.requestedCapabilities ?? []);
+    const explicitlyRequestedAgents = new Set<string>(selection?.requestedAgentIds ?? []);
+
+    const hasTypedSelection =
+      (selection?.requestedAgentIds?.length ?? 0) > 0
+      || (selection?.requestedCapabilities?.length ?? 0) > 0
+      || (selection?.requestedArtifactTypes?.length ?? 0) > 0
+      || (selection?.requestedCategories?.length ?? 0) > 0;
+
+    const preset = hasTypedSelection ? undefined : (selection?.requestPreset ?? defaultPlanningPreset);
+    for (const category of preset?.requestedCategories ?? []) {
+      requestedCategories.add(category);
+    }
+    for (const capability of preset?.requestedCapabilities ?? []) {
+      requestedCapabilities.add(capability);
+    }
+    for (const artifact of preset?.requestedArtifactTypes ?? []) {
+      requestedArtifacts.add(artifact);
+    }
+
+    const explicitAgentMentions = new Set<string>();
+    for (const definition of enabledDefinitions) {
+      const idReadable = definition.id.replace(/_/g, " ");
+      if (
+        includesWord(inspection.normalizedIdea, definition.id)
+        || includesWord(inspection.normalizedIdea, idReadable)
+        || includesWord(inspection.normalizedIdea, definition.displayName)
+      ) {
+        explicitAgentMentions.add(definition.id);
+      }
+    }
+
+    const selectedSet = new Set<string>();
+    for (const definition of enabledDefinitions) {
+      const supportedVerticals = definition.supportedVerticals as readonly string[];
+      if (
+        Array.isArray(supportedVerticals)
+        && supportedVerticals[0] !== "any"
+        && selection?.projectContext
+        && !supportedVerticals.includes(selection.projectContext.businessVertical)
+      ) {
+        continue;
+      }
+
+      const categoryMatch = requestedCategories.has(definition.category);
+      const artifactMatch = requestedArtifacts.has(definition.outputArtifactType);
+      const capabilityMatch = definition.requiredCapabilities.some((capability) => requestedCapabilities.has(capability));
+      const explicitMatch = explicitAgentMentions.has(definition.id) || explicitlyRequestedAgents.has(definition.id);
+
+      if (explicitMatch || categoryMatch || artifactMatch || capabilityMatch) {
+        selectedSet.add(definition.id);
+      }
+    }
+
+    if (selectedSet.size === 0) {
+      for (const definition of enabledDefinitions) {
+        const supportedVerticals = definition.supportedVerticals as readonly string[];
+        const verticalCompatible =
+          !selection?.projectContext
+          || supportedVerticals[0] === "any"
+          || supportedVerticals.includes(selection.projectContext.businessVertical);
+
+        if (verticalCompatible && definition.category === "strategy") {
+          selectedSet.add(definition.id);
+        }
+      }
+    }
+
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      for (const agentId of Array.from(selectedSet)) {
+        const definition = this.agentRegistry.getById(agentId as AgentID);
+        const dependencies = definition?.dependencies ?? [];
+        for (const dependency of dependencies) {
+          const depDefinition = this.agentRegistry.getById(dependency);
+          if (depDefinition?.enabled && !selectedSet.has(dependency)) {
+            selectedSet.add(dependency);
+            expanded = true;
+          }
+        }
+      }
+    }
+
+    const selectedAgents = enabledDefinitions
+      .map((definition) => definition.id)
+      .filter((agentId) => selectedSet.has(agentId));
 
     const dependencyGraph: DependencyGraph = {};
     for (const agent of selectedAgents) {
-      dependencyGraph[agent] = (dependencyTemplate[agent] ?? []).filter((dependency) => selectedAgents.includes(dependency));
+      const definition = this.agentRegistry.getById(agent as AgentID);
+      const dependencies = definition?.dependencies ?? [];
+      dependencyGraph[agent] = dependencies.filter((dependency) => selectedAgents.includes(dependency));
     }
 
-    const executionOrder = toTopologicalOrder(selectedAgents, dependencyGraph);
+    const executionOrder = toTopologicalOrder(selectedAgents, dependencyGraph, rankByAgent);
     const expectedArtifacts = selectedAgents.reduce<string[]>((acc, agentId) => {
-      const outputModel = this.agents.find((agent) => agent.id === (agentId as AgentID))?.outputModel;
+      const outputModel = this.agentRegistry.getById(agentId as AgentID)?.outputArtifactType;
       if (typeof outputModel === "string") {
         acc.push(outputModel);
       }
@@ -190,16 +364,17 @@ export class CEOOrchestrator {
       "CEO inspects the request and converts it to an executable workflow.",
       "Dependencies are validated before scheduling tasks.",
       "Agent order is computed from the dependency graph rather than hardcoded sequence.",
+      "Agent selection is metadata-driven by requested categories, artifacts, capabilities, supported verticals, and dependencies.",
     ];
 
-    if (shouldRunStrategyOnly) {
-      reasoning.push("Request indicates strategy-only scope; downstream research and finance are excluded.");
-    } else {
-      reasoning.push("Default startup planning scope includes strategy, market intelligence, and financial modeling.");
+    if (explicitAgentMentions.size > 0) {
+      reasoning.push("Explicit agent mentions were detected in the request.");
     }
-
-    if (financialSignals) {
-      reasoning.push("Financial intent detected in request; financial_analyst is mandatory.");
+    if (requestedArtifacts.size > 0) {
+      reasoning.push("Requested artifact types were used to select candidate agents.");
+    }
+    if (requestedCategories.size > 0) {
+      reasoning.push("Requested categories were used to select candidate agents.");
     }
 
     if (!inspection.ok) {
@@ -585,7 +760,13 @@ export class CEOOrchestrator {
   }
 
   async execute(request: CeoExecutionRequest): Promise<CeoExecutionResult> {
-    const plan = this.determineExecutionPlan(request.projectIdea);
+    const plan = this.determineExecutionPlan(request.projectIdea, {
+      projectContext: request.projectContext,
+      requestedAgentIds: request.requestedAgentIds,
+      requestedCapabilities: request.requestedCapabilities,
+      requestedArtifactTypes: request.requestedArtifactTypes,
+      requestedCategories: request.requestedCategories,
+    });
     const workflowState = new WorkflowStateMachine("planning", request.workflowRunId ?? request.projectId);
     let state = this.emptyState(workflowState.status);
 

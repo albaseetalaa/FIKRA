@@ -65,8 +65,18 @@ export interface CreateProjectInput {
 
 function inferAttemptStatus(attempt: OrchestratorAttemptRecord): AttemptStatus {
   if (attempt.error) return "failed";
+  if (attempt.validation?.success === false) return "failed";
   if (attempt.validation?.success === true) return "completed";
   return "running";
+}
+
+function inferAttemptErrorCode(attempt: OrchestratorAttemptRecord): string | null {
+  if (attempt.error?.code) return attempt.error.code;
+  const stage = attempt.validationDiagnostic?.validationStage;
+  if (stage === "semantic_validation") return "SEMANTIC_VALIDATION_FAILED";
+  if (stage === "json_parse") return "JSON_PARSE_FAILED";
+  if (attempt.validation?.success === false) return "SCHEMA_VALIDATION_FAILED";
+  return null;
 }
 
 function extractAttemptMeta(attempt: OrchestratorAttemptRecord) {
@@ -573,7 +583,7 @@ async function runExecution(
             providerId: meta.providerId,
             model: meta.model,
             status: attemptStatus,
-            errorCode: attempt.error?.code ?? null,
+            errorCode: inferAttemptErrorCode(attempt),
             retryable: attempt.error?.retryable ?? false,
             latencyMs: meta.latencyMs,
             inputTokens: meta.inputTokens,
