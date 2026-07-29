@@ -1,122 +1,404 @@
 # Fikra AI
 
-Production foundation for the Fikra AI web application.
+Fikra AI is a Next.js application for transforming business ideas into structured outputs through coordinated AI agents.
 
-This is the project scaffold only — no product features are implemented
-yet. It establishes a clean, production-ready base to build on.
+The current codebase includes a shared Agent SDK, a CEO-style orchestrator, structured-output validation, reliability policies, workflow persistence, project APIs, automated tests, and continuous integration.
 
-## Stack
+## Current Capabilities
 
-- [Next.js 15](https://nextjs.org) — App Router
-- [TypeScript](https://www.typescriptlang.org) — strict mode
-- [Tailwind CSS v4](https://tailwindcss.com)
-- [ESLint 9](https://eslint.org) (flat config) + [Prettier](https://prettier.io)
-- [Supabase](https://supabase.com) — browser, server, and middleware clients
-- Deploy target: [Vercel](https://vercel.com)
+The implemented foundation includes:
 
-## Getting started
+- Business project creation and processing workflows
+- Business Strategist agent
+- Market Research agent
+- Financial Analyst agent
+- CEO-driven execution planning
+- Shared Agent SDK and agent registry
+- Agent factory and shared execution lifecycle
+- Structured output contracts
+- JSON parsing and normalization
+- Schema validation
+- Semantic validation
+- Validation-aware output repair
+- Retry and timeout handling
+- Agent dependency management
+- Failure isolation between workflow steps
+- Pause and resume workflow support
+- Artifact and attempt persistence
+- In-memory persistence
+- Supabase persistence
+- Project history and workflow status APIs
+- Automated GitHub Actions checks
 
-Requires Node.js 18.18+ and npm (or pnpm/yarn).
+New agents should be registered through the Agent SDK without adding agent-specific branching logic to the orchestrator runtime.
+
+## Technology Stack
+
+- Next.js 15
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- ESLint 9
+- Prettier
+- Vitest
+- Zod
+- OpenAI SDK
+- Supabase
+- GitHub Actions
+- Vercel
+
+## Requirements
+
+- Node.js 18.18 or newer
+- npm
+- Git
+- Supabase CLI when working with migrations or local Supabase
+
+GitHub Actions currently uses Node.js 20.
+
+## Local Setup
+
+Clone the repository:
 
 ```bash
-npm install
-cp .env.example .env.local   # fill in Supabase credentials
+git clone https://github.com/albaseetalaa/FIKRA.git
+cd FIKRA
+```
+
+Install the exact dependency versions from `package-lock.json`:
+
+```bash
+npm ci
+```
+
+Create a local environment file.
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env.local
+```
+
+On macOS or Linux:
+
+```bash
+cp .env.example .env.local
+```
+
+Add the required local environment values, then start the development server:
+
+```bash
 npm run dev
 ```
 
-The app runs at http://localhost:3000.
+Open:
 
-## Scripts
-
-| Command                | Description                              |
-| ----------------------- | ----------------------------------------- |
-| `npm run dev`           | Start the dev server (Turbopack)          |
-| `npm run build`         | Production build                          |
-| `npm run start`         | Start the production server               |
-| `npm run lint`          | Run ESLint                                |
-| `npm run lint:fix`      | Run ESLint with autofix                   |
-| `npm run format`        | Format the codebase with Prettier         |
-| `npm run format:check`  | Check formatting without writing changes  |
-| `npm run type-check`    | Run the TypeScript compiler with no emit  |
-
-## Project structure
-
+```text
+http://localhost:3000
 ```
-fikra-ai/
+
+## Available Scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the Next.js development server with Turbopack |
+| `npm run build` | Create an optimized production build |
+| `npm run start` | Start the production server |
+| `npm run lint` | Run ESLint |
+| `npm run lint:fix` | Run ESLint with automatic fixes |
+| `npm run type-check` | Run TypeScript validation without emitting files |
+| `npm test` | Run the complete Vitest suite once |
+| `npm run format` | Format supported files with Prettier |
+| `npm run format:check` | Check formatting without changing files |
+
+The repository is not currently fully normalized to the active Prettier configuration. Repository-wide formatting should be handled in a dedicated branch and should not be mixed with functional changes.
+
+## Project Structure
+
+```text
+FIKRA/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── public/
 ├── src/
-│   ├── app/                  # App Router: routes, layouts, global styles
-│   │   ├── layout.tsx        # Root layout (fonts, metadata, chrome)
-│   │   ├── page.tsx          # Homepage
-│   │   ├── not-found.tsx     # Custom 404
-│   │   ├── error.tsx         # Global error boundary
-│   │   └── globals.css       # Tailwind import + design tokens
+│   ├── ai/
+│   │   ├── agents/
+│   │   ├── ceo/
+│   │   ├── context/
+│   │   ├── contracts/
+│   │   ├── normalization/
+│   │   ├── pipelines/
+│   │   ├── prompts/
+│   │   ├── providers/
+│   │   ├── reliability/
+│   │   ├── schemas/
+│   │   ├── sdk/
+│   │   ├── store/
+│   │   ├── testing/
+│   │   ├── validation/
+│   │   └── workflow/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── create-project/
+│   │   ├── projects/
+│   │   └── workspace/
 │   ├── components/
-│   │   └── layout/           # App chrome (header, footer, ...)
 │   ├── lib/
-│   │   ├── supabase/         # Browser / server / middleware clients
-│   │   └── utils.ts          # Shared helpers (cn, ...)
-│   └── types/                # Shared TypeScript types
-├── public/                   # Static assets
-├── middleware.ts             # Supabase session refresh
+│   │   ├── persistence/
+│   │   ├── project-workflow/
+│   │   ├── supabase/
+│   │   └── time/
+│   └── types/
+├── supabase/
+│   ├── migrations/
+│   └── README.md
 ├── .env.example
-├── eslint.config.mjs
-├── .prettierrc.json
-├── postcss.config.mjs
+├── CONTRIBUTING.md
+├── middleware.ts
 ├── next.config.ts
+├── package-lock.json
+├── package.json
 └── tsconfig.json
 ```
 
-## Environment variables
+## AI Execution Architecture
 
-See `.env.example`. Variables are validated at startup via a Zod schema in
-`src/lib/env.ts` — import `env` from there instead of reading
-`process.env` directly. Currently all variables are optional (Supabase
-isn't wired in yet); set them once auth/data work begins:
+The shared execution path is:
 
-- `NEXT_PUBLIC_SITE_URL` — canonical production URL (used for `metadataBase`)
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+```text
+CEO Orchestrator
+    ↓
+Execution Plan
+    ↓
+Agent Registry
+    ↓
+Agent Factory
+    ↓
+Shared Agent Lifecycle
+    ↓
+Provider Invocation
+    ↓
+Normalization
+    ↓
+Structural and Semantic Validation
+    ↓
+Repair or Retry Policy
+    ↓
+Artifact Persistence
+```
 
-`SUPABASE_SERVICE_ROLE_KEY` is server-only and should never be exposed to
-the client or committed to source control.
+The Agent SDK is the canonical runtime path for agent execution.
 
-## CI
+Detailed Agent SDK guidance is available in:
 
-`.github/workflows/ci.yml` runs on every push/PR to `main`: install,
-format check, lint, type-check, build. All four must pass before merge.
+```text
+src/ai/sdk/README.md
+```
 
-## Security headers
+## Persistence
 
-Production security headers (CSP, X-Frame-Options, Referrer-Policy, HSTS,
-X-Content-Type-Options, Permissions-Policy) are set in `next.config.ts`.
-The CSP is intentionally conservative — revisit `connect-src`/`img-src`
-when Supabase, analytics, or third-party embeds are added.
+Fikra AI supports the following persistence providers:
 
-## Deployment (Vercel)
+```text
+memory
+supabase
+```
 
-1. Push this repository to GitHub.
-2. Import the repo in [Vercel](https://vercel.com/new).
-3. Add the environment variables from `.env.example` in the Vercel project
-   settings.
-4. Deploy — no additional configuration is required; the default build
-   command (`next build`) and output are used as-is.
+The provider is selected through:
 
-## Conventions
+```env
+AI_PERSISTENCE_PROVIDER=memory
+```
 
-- Path alias `@/*` resolves to `src/*`.
-- Components live under `src/components`, grouped by concern
-  (`layout/`, and future groups like `ui/`, `features/`).
-- Server-only code (Supabase server client, middleware helper) is kept
-  separate from browser-safe code.
-- Run `npm run lint` and `npm run format:check` before committing;
-  CI should fail the build on either.
+For Supabase persistence:
 
-## Status
+```env
+AI_PERSISTENCE_PROVIDER=supabase
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+```
 
-Foundation only. No product features, routes beyond the homepage, or
-database schema have been added yet.
+Database migrations are stored in:
 
-**Before the first real install:** this repo does not yet include a
-committed `package-lock.json`. Run `npm install` in an environment with
-npm registry access to generate one, commit it, and let CI take over
-verification from there.
+```text
+supabase/migrations
+```
+
+Supabase setup and migration instructions are documented in:
+
+```text
+supabase/README.md
+```
+
+## Environment Variables
+
+Use `.env.example` as the canonical environment-variable reference.
+
+```env
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+
+AI_PERSISTENCE_PROVIDER=memory
+RUN_SUPABASE_INTEGRATION_TESTS=false
+```
+
+Environment rules:
+
+- Never commit `.env.local`
+- Never expose `SUPABASE_SERVICE_ROLE_KEY` to client-side code
+- Only variables prefixed with `NEXT_PUBLIC_` may be exposed to the browser
+- Add every new environment variable to `.env.example`
+- Add runtime environment variables to the Zod schema in `src/lib/env.ts`
+
+## Testing
+
+Run the complete test suite:
+
+```bash
+npm test
+```
+
+The current test suite covers areas including:
+
+- Agent registry behavior
+- Agent factory behavior
+- Agent SDK lifecycle policies
+- Output contract registration
+- Provider structured outputs
+- Response parsing guardrails
+- Schema validation
+- Semantic validation
+- Validation-aware repair
+- Retry behavior
+- Timeout handling
+- Failure isolation
+- CEO orchestration
+- Dynamic agent execution
+- Pause and resume workflows
+- Persistence contracts
+- Supabase retry classification
+- Cross-vertical regression
+- Project workflow calculations
+- API route behavior
+
+Supabase integration tests should be run separately and must not be executed concurrently.
+
+## Local Quality Checks
+
+Before opening a pull request, run:
+
+```bash
+npm run lint
+npm run type-check
+npm test
+npm run build
+```
+
+All four commands must complete successfully before merge.
+
+## Continuous Integration
+
+GitHub Actions runs for pushes and pull requests targeting `master`.
+
+The CI workflow performs:
+
+```text
+npm ci
+npm run lint
+npm run type-check
+npm test
+npm run build
+```
+
+The workflow uses read-only repository permissions.
+
+## Branching
+
+The repository currently uses:
+
+```text
+master
+```
+
+Create a focused branch for each change.
+
+Examples:
+
+```text
+feature/<name>
+fix/<name>
+chore/<name>
+docs/<name>
+refactor/<name>
+test/<name>
+ci/<name>
+```
+
+Use Conventional Commits-style messages:
+
+```text
+feat: add marketing strategist agent
+fix: prevent duplicate workflow attempts
+docs: update project architecture
+ci: run quality checks on master
+```
+
+Pull requests should remain focused, pass all automated checks, and be squash-merged after review.
+
+See `CONTRIBUTING.md` for the contribution workflow.
+
+## Security
+
+- Never commit secrets or local environment files
+- Keep service-role credentials in server-only code
+- Validate agent outputs before persistence
+- Do not silently accept structurally invalid artifacts
+- Require external API access through declared agent capabilities
+- Keep GitHub Actions permissions minimal
+- Review dependency vulnerabilities before applying automated breaking updates
+- Do not use `npm audit fix --force` without reviewing the dependency changes
+
+## Deployment
+
+The application is connected to Vercel.
+
+A deployment should use:
+
+```bash
+npm run build
+```
+
+Before release:
+
+1. Confirm GitHub Actions passes
+2. Confirm the Vercel deployment check passes
+3. Confirm required environment variables are configured
+4. Confirm no secrets are included in the repository
+5. Confirm the target commit is present on `master`
+
+## Documentation
+
+- `README.md` — project overview and setup
+- `CONTRIBUTING.md` — contribution workflow and standards
+- `src/ai/README.md` — AI architecture overview
+- `src/ai/sdk/README.md` — Agent SDK extension guide
+- `supabase/README.md` — Supabase migrations and operations
+
+## Verified Baseline
+
+The current verified baseline includes:
+
+- TypeScript validation passed
+- ESLint validation passed
+- 45 test files passed
+- 219 tests passed
+- Next.js production build passed
+- Local application startup passed
+- GitHub Actions checks passed on `master`
+
+Future agents and product modules should build on the existing Agent SDK and shared execution foundation rather than bypassing them.
