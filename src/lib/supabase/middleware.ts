@@ -5,8 +5,8 @@ type SupabaseCookieList = Parameters<SetAllCookies>[0];
 
 /**
  * Refreshes the Supabase auth session on every request and keeps the
- * browser/server cookies in sync. Wire this into middleware.ts once
- * authentication is introduced.
+ * browser/server cookies in sync. This is called by src/middleware.ts
+ * before matched application requests continue.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
