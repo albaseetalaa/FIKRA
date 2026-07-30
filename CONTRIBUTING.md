@@ -4,12 +4,12 @@ This document defines the required workflow, quality checks, and engineering rul
 
 ## Requirements
 
-- Node.js 18.18 or newer
+- Node.js 24.x
 - npm
 - Git
 - Supabase CLI when working with migrations or local Supabase
 
-GitHub Actions currently uses Node.js 20.
+GitHub Actions currently uses Node.js 24.
 
 ## Initial Setup
 

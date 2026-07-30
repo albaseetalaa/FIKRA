@@ -21,14 +21,52 @@ import type { PersistenceProvider } from "./types";
 let globalContainer: PersistenceContainer | null = null;
 
 function resolveProvider(): PersistenceProvider {
-  if (process.env.NODE_ENV === "test") return "memory";
-  const configured = process.env.AI_PERSISTENCE_PROVIDER;
-  if (configured === "supabase") return "supabase";
-  return "memory";
+  const nodeEnv = process.env.NODE_ENV ?? "development";
+  const configured = process.env.AI_PERSISTENCE_PROVIDER?.trim();
+
+  if (nodeEnv === "test") {
+    return "memory";
+  }
+
+  if (nodeEnv === "production") {
+    if (configured !== "supabase") {
+      throw new Error(
+        "Production persistence requires AI_PERSISTENCE_PROVIDER=supabase.",
+      );
+    }
+
+    return "supabase";
+  }
+
+  if (!configured || configured === "memory") {
+    return "memory";
+  }
+
+  if (configured === "supabase") {
+    return "supabase";
+  }
+
+  throw new Error(
+    'AI_PERSISTENCE_PROVIDER must be either "memory" or "supabase".',
+  );
 }
 
-function canUseSupabase() {
-  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+function assertSupabaseConfigured() {
+  const missing: string[] = [];
+
+  if (!process.env.SUPABASE_URL?.trim()) {
+    missing.push("SUPABASE_URL");
+  }
+
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+    missing.push("SUPABASE_SERVICE_ROLE_KEY");
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Supabase persistence requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. Missing: ${missing.join(", ")}.`,
+    );
+  }
 }
 
 export function resetPersistenceContainerForTests() {
@@ -36,12 +74,17 @@ export function resetPersistenceContainerForTests() {
 }
 
 export function getPersistenceContainer(): PersistenceContainer {
-  if (globalContainer) return globalContainer;
+  if (globalContainer) {
+    return globalContainer;
+  }
 
   const provider = resolveProvider();
 
-  if (provider === "supabase" && canUseSupabase()) {
+  if (provider === "supabase") {
+    assertSupabaseConfigured();
+
     const db = createAdminClient();
+
     globalContainer = {
       provider: "supabase",
       projects: new SupabaseProjectRepository(db),
@@ -51,6 +94,7 @@ export function getPersistenceContainer(): PersistenceContainer {
       checkpoints: new SupabaseWorkflowCheckpointRepository(db),
       artifacts: new SupabaseArtifactStore(db),
     };
+
     return globalContainer;
   }
 
