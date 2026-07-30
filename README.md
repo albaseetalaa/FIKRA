@@ -49,12 +49,12 @@ New agents should be registered through the Agent SDK without adding agent-speci
 
 ## Requirements
 
-- Node.js 20.9 or newer
+- Node.js 24.x
 - npm
 - Git
 - Supabase CLI when working with migrations or local Supabase
 
-GitHub Actions currently uses Node.js 20.
+GitHub Actions currently uses Node.js 24.
 
 ## Local Setup
 
