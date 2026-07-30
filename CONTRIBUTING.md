@@ -4,7 +4,7 @@ This document defines the required workflow, quality checks, and engineering rul
 
 ## Requirements
 
-- Node.js 18.18 or newer
+- Node.js 20.9 or newer
 - npm
 - Git
 - Supabase CLI when working with migrations or local Supabase

@@ -49,7 +49,7 @@ New agents should be registered through the Agent SDK without adding agent-speci
 
 ## Requirements
 
-- Node.js 18.18 or newer
+- Node.js 20.9 or newer
 - npm
 - Git
 - Supabase CLI when working with migrations or local Supabase
@@ -402,3 +402,17 @@ The current verified baseline includes:
 - GitHub Actions checks passed on `master`
 
 Future agents and product modules should build on the existing Agent SDK and shared execution foundation rather than bypassing them.
+
+## Production persistence safety
+
+Automated tests always use in-memory persistence. Local development may use
+`AI_PERSISTENCE_PROVIDER=memory`.
+
+Production must set:
+
+- `AI_PERSISTENCE_PROVIDER=supabase`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Fikra fails explicitly when production persistence is missing or incomplete.
+It does not silently store customer work in temporary process memory.

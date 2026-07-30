@@ -64,9 +64,10 @@ function parseEnv() {
 export const env = parseEnv();
 
 /**
- * True once Supabase credentials are present. Supabase is not wired
- * into the app yet (Sprint 0 is foundation-only) — this flag exists
- * so future code can branch on configuration without re-deriving it.
+ * True when browser-facing Supabase configuration is available.
+ *
+ * Server-side AI persistence additionally requires SUPABASE_URL,
+ * SUPABASE_SERVICE_ROLE_KEY, and AI_PERSISTENCE_PROVIDER=supabase.
  */
 export const isSupabaseConfigured = Boolean(
   env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
