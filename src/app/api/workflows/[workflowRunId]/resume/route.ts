@@ -1,3 +1,4 @@
+import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/requireAuthenticatedUser";
 import { NextResponse } from "next/server";
 import {
   ResumeRequestAlreadyConsumedError,
@@ -11,6 +12,7 @@ import { resumeRequestBodySchema, resumeResponseSchema } from "@/lib/project-wor
 
 export async function POST(req: Request, ctx: { params: Promise<{ workflowRunId: string }> }) {
   try {
+    await requireAuthenticatedUser();
     const params = await ctx.params;
     const payload = await req.json();
     const body = resumeRequestBodySchema.parse(payload);
@@ -24,6 +26,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ workflowRunId:
 
     return NextResponse.json(resumeResponseSchema.parse(result));
   } catch (error: unknown) {
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 401 },
+      );
+    }
+
     if (error instanceof ResumeValidationError) {
       return NextResponse.json({ state: "validation_error", error: error.message }, { status: 400 });
     }

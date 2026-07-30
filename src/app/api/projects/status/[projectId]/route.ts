@@ -1,8 +1,10 @@
+import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/requireAuthenticatedUser";
 import { NextResponse } from "next/server";
 import { getProjectStatus } from "@/lib/project-workflow/service";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ projectId: string }> }) {
   try {
+    await requireAuthenticatedUser();
     const params = await ctx.params;
     const project = await getProjectStatus(params.projectId);
 
@@ -28,7 +30,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ projectId: str
       financialModel: project.financialModel,
       projectScore: project.projectScore ?? null,
     });
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 401 },
+      );
+    }
+
     return NextResponse.json({ error: "Could not fetch project status." }, { status: 500 });
   }
 }
