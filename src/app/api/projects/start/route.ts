@@ -1,8 +1,10 @@
+import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/requireAuthenticatedUser";
 import { NextResponse } from "next/server";
 import { getProjectStatus, startBusinessStrategistExecution } from "@/lib/project-workflow/service";
 
 export async function POST(req: Request) {
   try {
+    await requireAuthenticatedUser();
     const body = (await req.json()) as { projectId?: string };
     const projectId = String(body?.projectId ?? "").trim();
 
@@ -17,7 +19,14 @@ export async function POST(req: Request) {
 
     await startBusinessStrategistExecution(projectId);
     return NextResponse.json({ status: "running" });
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 401 },
+      );
+    }
+
     return NextResponse.json({ error: "Could not start execution." }, { status: 500 });
   }
 }

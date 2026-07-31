@@ -1,8 +1,10 @@
+import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/requireAuthenticatedUser";
 import { NextResponse } from "next/server";
 import { createProject } from "@/lib/project-workflow/service";
 
 export async function POST(req: Request) {
   try {
+    await requireAuthenticatedUser();
     const body = (await req.json()) as {
       idea?: string;
       businessName?: string;
@@ -43,7 +45,14 @@ export async function POST(req: Request) {
       projectId: project.projectId,
       status: project.status,
     });
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 401 },
+      );
+    }
+
     return NextResponse.json({ error: "Could not create project." }, { status: 500 });
   }
 }

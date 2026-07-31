@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 
 const fixedIso = "2026-07-28T00:00:00.000Z";
 
+const { requireAuthenticatedUserMock } = vi.hoisted(() => ({
+  requireAuthenticatedUserMock: vi.fn(async () => ({
+    id: "user_test_1",
+  })),
+}));
+
+vi.mock("@/lib/auth/requireAuthenticatedUser", () => ({
+  AuthenticationRequiredError: class AuthenticationRequiredError extends Error {},
+  requireAuthenticatedUser: requireAuthenticatedUserMock,
+}));
+
 vi.mock("@/lib/project-workflow/service", () => ({
   listProjectHistory: vi.fn(async () => [
     {
@@ -25,5 +36,6 @@ describe("projects history route", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(body.items)).toBe(true);
     expect((body.items as Array<{ id: string }>)[0]?.id).toBe("proj_test_1");
+    expect(requireAuthenticatedUserMock).toHaveBeenCalledTimes(1);
   });
 });
