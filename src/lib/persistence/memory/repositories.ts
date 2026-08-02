@@ -1,10 +1,47 @@
 import type { ArtifactRecord, ArtifactStore } from "../../../ai/store/artifactStore";
 import { InMemoryArtifactStore } from "../../../ai/store/inMemoryStore";
-import type { AttemptRepository, ProjectRepository, WorkflowCheckpointRepository, WorkflowRunRepository, WorkflowTaskRepository } from "../interfaces";
+import type {
+  AttemptRepository,
+  PersistenceContainer,
+  ProjectRepository,
+  RequestWorkflowResumeRepository,
+  RequestWorkflowResumeTarget,
+  WorkflowCheckpointRepository,
+  WorkflowRunRepository,
+  WorkflowTaskRepository,
+} from "../interfaces";
 import type { AttemptRecord, ExecutionStatus, ProjectRecord, WorkflowCheckpointRecord, WorkflowRunRecord, WorkflowTaskRecord } from "../types";
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+type ProjectPatch = Partial<Omit<ProjectRecord, "id" | "createdAt">>;
+
+function hasOwn(obj: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function applyUnscopedTenantInvariants(current: ProjectRecord, patch: ProjectPatch): void {
+  if (hasOwn(patch, "organizationId")) {
+    const next = patch.organizationId;
+    if (next === undefined) {
+      throw new Error("organizationId must not be explicitly set to undefined.");
+    }
+    if (current.organizationId !== null && next !== current.organizationId) {
+      throw new Error("organizationId is immutable once set.");
+    }
+  }
+
+  if (hasOwn(patch, "createdBy")) {
+    const next = patch.createdBy;
+    if (next === undefined) {
+      throw new Error("createdBy must not be explicitly set to undefined.");
+    }
+    if (current.createdBy !== null && next !== current.createdBy && next !== null) {
+      throw new Error("createdBy cannot be reassigned to a different non-null user.");
+    }
+  }
 }
 
 export class InMemoryProjectRepository implements ProjectRepository {
@@ -16,6 +53,8 @@ export class InMemoryProjectRepository implements ProjectRepository {
     idea: string;
     activePipelineId: string;
     metadata?: Record<string, unknown> | null;
+    organizationId?: string | null;
+    createdBy?: string | null;
   }): Promise<ProjectRecord> {
     const now = nowIso();
     const record: ProjectRecord = {
@@ -25,6 +64,8 @@ export class InMemoryProjectRepository implements ProjectRepository {
       metadata: input.metadata ?? null,
       status: "queued",
       activePipelineId: input.activePipelineId,
+      organizationId: input.organizationId ?? null,
+      createdBy: input.createdBy ?? null,
       createdAt: now,
       updatedAt: now,
       completedAt: null,
@@ -45,9 +86,57 @@ export class InMemoryProjectRepository implements ProjectRepository {
     return sorted;
   }
 
-  async update(id: string, patch: Partial<Omit<ProjectRecord, "id" | "createdAt">>): Promise<ProjectRecord | null> {
+  async update(id: string, patch: ProjectPatch): Promise<ProjectRecord | null> {
     const current = this.items.get(id);
     if (!current) return null;
+
+    applyUnscopedTenantInvariants(current, patch);
+
+    const next: ProjectRecord = {
+      ...current,
+      ...patch,
+      updatedAt: nowIso(),
+    };
+    this.items.set(id, next);
+    return next;
+  }
+
+  scopedToCreator(createdBy: string): ProjectRepository {
+    return new CreatorScopedInMemoryProjectRepository(this.items, createdBy);
+  }
+}
+
+class CreatorScopedInMemoryProjectRepository implements ProjectRepository {
+  constructor(
+    private readonly items: Map<string, ProjectRecord>,
+    private readonly createdBy: string,
+  ) {}
+
+  async create(): Promise<ProjectRecord> {
+    throw new Error("Creator-scoped repositories cannot create projects; use the atomic project creation service.");
+  }
+
+  async getById(id: string): Promise<ProjectRecord | null> {
+    const record = this.items.get(id);
+    if (!record || record.createdBy !== this.createdBy) return null;
+    return record;
+  }
+
+  async list(limit?: number): Promise<ProjectRecord[]> {
+    const sorted = Array.from(this.items.values())
+      .filter((item) => item.createdBy === this.createdBy)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    if (typeof limit === "number") return sorted.slice(0, limit);
+    return sorted;
+  }
+
+  async update(id: string, patch: ProjectPatch): Promise<ProjectRecord | null> {
+    const current = this.items.get(id);
+    if (!current || current.createdBy !== this.createdBy) return null;
+
+    if (hasOwn(patch, "organizationId") || hasOwn(patch, "createdBy")) {
+      throw new Error("Creator-scoped repositories cannot modify organizationId or createdBy.");
+    }
 
     const next: ProjectRecord = {
       ...current,
@@ -243,4 +332,27 @@ export class InMemoryArtifactStoreV2 implements ArtifactStore {
   clear() {
     this.store.clear();
   }
+}
+
+export function createInMemoryWorkflowResumeRepository(
+  system: PersistenceContainer,
+  createdBy: string,
+): RequestWorkflowResumeRepository {
+  return {
+    async findProjectForWorkflowRun(workflowRunId: string): Promise<RequestWorkflowResumeTarget | null> {
+      const run = await system.workflowRuns.getById(workflowRunId);
+      if (!run) return null;
+
+      const project = await system.projects.getById(run.projectId);
+      if (!project || project.createdBy !== createdBy || project.organizationId === null) {
+        return null;
+      }
+
+      return {
+        workflowRunId: run.id,
+        projectId: project.id,
+        organizationId: project.organizationId,
+      };
+    },
+  };
 }

@@ -9,6 +9,8 @@ export interface ProjectRecord {
   metadata?: Record<string, unknown> | null;
   status: ExecutionStatus;
   activePipelineId: string;
+  organizationId: string | null;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;

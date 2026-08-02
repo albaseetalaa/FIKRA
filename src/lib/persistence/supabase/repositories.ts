@@ -1,6 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ArtifactRecord, ArtifactStore } from "../../../ai/store/artifactStore";
-import type { AttemptRepository, ProjectRepository, WorkflowCheckpointRepository, WorkflowRunRepository, WorkflowTaskRepository } from "../interfaces";
+import type {
+  AttemptRepository,
+  ProjectRepository,
+  RequestWorkflowResumeRepository,
+  RequestWorkflowResumeTarget,
+  WorkflowCheckpointRepository,
+  WorkflowRunRepository,
+  WorkflowTaskRepository,
+} from "../interfaces";
 import type { AttemptRecord, ExecutionStatus, ProjectRecord, WorkflowCheckpointRecord, WorkflowRunRecord, WorkflowTaskRecord } from "../types";
 
 type QueryErrorLike = {
@@ -163,7 +171,13 @@ function fail(message: string, error?: unknown): never {
   throw new Error(`${message} ${formatError(error)}`);
 }
 
+type ProjectRow = Record<string, unknown> & {
+  organization_id?: string | null;
+  created_by?: string | null;
+};
+
 function mapProject(row: Record<string, unknown>): ProjectRecord {
+  const projectRow = row as ProjectRow;
   return {
     id: String(row.id),
     name: String(row.name),
@@ -171,6 +185,8 @@ function mapProject(row: Record<string, unknown>): ProjectRecord {
     metadata: (row.metadata_json as Record<string, unknown> | null) ?? null,
     status: row.status as ExecutionStatus,
     activePipelineId: String(row.active_pipeline_id),
+    organizationId: projectRow.organization_id ?? null,
+    createdBy: projectRow.created_by ?? null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     completedAt: row.completed_at ? String(row.completed_at) : null,
@@ -359,6 +375,84 @@ export class SupabaseProjectRepository implements ProjectRepository {
       if (withoutMetadata.updatedAt !== undefined) retryMapped.updated_at = withoutMetadata.updatedAt;
 
       const fallback = await executeWithRetry<Record<string, unknown>>(() => this.db.from("projects").update(retryMapped).eq("id", id).select("*").maybeSingle());
+      if (!fallback.error) {
+        return fallback.data ? mapProject(fallback.data) : null;
+      }
+      fail("Could not update project.", fallback.error);
+    }
+
+    fail("Could not update project.", firstAttempt.error);
+  }
+
+  scopedToCreator(createdBy: string): ProjectRepository {
+    return new CreatorScopedSupabaseProjectRepository(this.db, createdBy);
+  }
+}
+
+class CreatorScopedSupabaseProjectRepository implements ProjectRepository {
+  constructor(
+    private readonly db: SupabaseClient,
+    private readonly createdBy: string,
+  ) {}
+
+  async create(): Promise<ProjectRecord> {
+    throw new Error("Creator-scoped repositories cannot create projects; use the atomic project creation service.");
+  }
+
+  async getById(id: string): Promise<ProjectRecord | null> {
+    const { data, error } = await executeWithRetry<Record<string, unknown>>(() =>
+      this.db.from("projects").select("*").eq("id", id).eq("created_by", this.createdBy).maybeSingle(),
+    );
+    if (error) fail("Could not fetch project.", error);
+    return data ? mapProject(data) : null;
+  }
+
+  async list(limit?: number): Promise<ProjectRecord[]> {
+    let query = this.db.from("projects").select("*").eq("created_by", this.createdBy).order("created_at", { ascending: false });
+    if (typeof limit === "number") query = query.limit(limit);
+    const { data, error } = await executeWithRetry<Record<string, unknown>[]>(() => query);
+    if (error) fail("Could not list projects.", error);
+    return (data ?? []).map(mapProject);
+  }
+
+  async update(id: string, patch: Partial<Omit<ProjectRecord, "id" | "createdAt">>): Promise<ProjectRecord | null> {
+    if (Object.prototype.hasOwnProperty.call(patch, "organizationId") || Object.prototype.hasOwnProperty.call(patch, "createdBy")) {
+      throw new Error("Creator-scoped repositories cannot modify organizationId or createdBy.");
+    }
+
+    const mapped: Record<string, unknown> = {};
+    if (patch.name !== undefined) mapped.name = patch.name;
+    if (patch.idea !== undefined) mapped.idea = patch.idea;
+    if (patch.status !== undefined) mapped.status = patch.status;
+    if (patch.activePipelineId !== undefined) mapped.active_pipeline_id = patch.activePipelineId;
+    if (patch.metadata !== undefined) mapped.metadata_json = patch.metadata;
+    if (patch.completedAt !== undefined) mapped.completed_at = patch.completedAt;
+    if (patch.errorCode !== undefined) mapped.error_code = patch.errorCode;
+    if (patch.sanitizedErrorMessage !== undefined) mapped.sanitized_error_message = patch.sanitizedErrorMessage;
+    if (patch.updatedAt !== undefined) mapped.updated_at = patch.updatedAt;
+
+    const firstAttempt = await executeWithRetry<Record<string, unknown>>(() =>
+      this.db.from("projects").update(mapped).eq("id", id).eq("created_by", this.createdBy).select("*").maybeSingle(),
+    );
+    if (!firstAttempt.error) {
+      return firstAttempt.data ? mapProject(firstAttempt.data) : null;
+    }
+
+    if (patch.metadata !== undefined && /metadata_json/i.test(firstAttempt.error?.message ?? "")) {
+      const { metadata: _ignoredMetadata, ...withoutMetadata } = patch;
+      const retryMapped: Record<string, unknown> = {};
+      if (withoutMetadata.name !== undefined) retryMapped.name = withoutMetadata.name;
+      if (withoutMetadata.idea !== undefined) retryMapped.idea = withoutMetadata.idea;
+      if (withoutMetadata.status !== undefined) retryMapped.status = withoutMetadata.status;
+      if (withoutMetadata.activePipelineId !== undefined) retryMapped.active_pipeline_id = withoutMetadata.activePipelineId;
+      if (withoutMetadata.completedAt !== undefined) retryMapped.completed_at = withoutMetadata.completedAt;
+      if (withoutMetadata.errorCode !== undefined) retryMapped.error_code = withoutMetadata.errorCode;
+      if (withoutMetadata.sanitizedErrorMessage !== undefined) retryMapped.sanitized_error_message = withoutMetadata.sanitizedErrorMessage;
+      if (withoutMetadata.updatedAt !== undefined) retryMapped.updated_at = withoutMetadata.updatedAt;
+
+      const fallback = await executeWithRetry<Record<string, unknown>>(() =>
+        this.db.from("projects").update(retryMapped).eq("id", id).eq("created_by", this.createdBy).select("*").maybeSingle(),
+      );
       if (!fallback.error) {
         return fallback.data ? mapProject(fallback.data) : null;
       }
@@ -654,4 +748,62 @@ export class SupabaseWorkflowCheckpointRepository implements WorkflowCheckpointR
     const { error } = await executeWithRetry<null>(() => this.db.from("workflow_checkpoints").delete().eq("workflow_run_id", workflowRunId));
     if (error) fail("Could not clear workflow checkpoint.", error);
   }
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function parseWorkflowResumeRow(row: unknown, createdBy: string): RequestWorkflowResumeTarget | null {
+  if (row === null || typeof row !== "object" || Array.isArray(row)) {
+    throw new Error("Could not resolve workflow resume authorization data.", { cause: row });
+  }
+
+  const candidate = row as Record<string, unknown>;
+  const projectRelation = candidate.projects;
+
+  if (projectRelation === null || typeof projectRelation !== "object" || Array.isArray(projectRelation)) {
+    throw new Error("Could not resolve workflow resume authorization data.", { cause: row });
+  }
+
+  const projectCandidate = projectRelation as Record<string, unknown>;
+
+  if (!isNonBlankString(candidate.id) || !isNonBlankString(candidate.project_id)) {
+    throw new Error("Could not resolve workflow resume authorization data.", { cause: row });
+  }
+
+  if (projectCandidate.created_by !== createdBy) {
+    return null;
+  }
+
+  if (!isNonBlankString(projectCandidate.organization_id)) {
+    return null;
+  }
+
+  return {
+    workflowRunId: candidate.id,
+    projectId: candidate.project_id,
+    organizationId: projectCandidate.organization_id,
+  };
+}
+
+export function createSupabaseWorkflowResumeRepository(db: SupabaseClient, createdBy: string): RequestWorkflowResumeRepository {
+  return {
+    async findProjectForWorkflowRun(workflowRunId: string): Promise<RequestWorkflowResumeTarget | null> {
+      const { data, error } = await executeWithRetry<Record<string, unknown>>(() =>
+        db
+          .from("workflow_runs")
+          .select("id, project_id, projects!inner(organization_id, created_by)")
+          .eq("id", workflowRunId)
+          .eq("projects.created_by", createdBy)
+          .not("projects.organization_id", "is", null)
+          .maybeSingle(),
+      );
+
+      if (error) fail("Could not resolve workflow resume authorization.", error);
+      if (!data) return null;
+
+      return parseWorkflowResumeRow(data, createdBy);
+    },
+  };
 }

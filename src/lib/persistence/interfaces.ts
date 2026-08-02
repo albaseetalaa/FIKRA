@@ -8,10 +8,31 @@ export interface ProjectRepository {
     idea: string;
     activePipelineId: string;
     metadata?: Record<string, unknown> | null;
+    organizationId?: string | null;
+    createdBy?: string | null;
   }): Promise<ProjectRecord>;
   getById(id: string): Promise<ProjectRecord | null>;
   list(limit?: number): Promise<ProjectRecord[]>;
   update(id: string, patch: Partial<Omit<ProjectRecord, "id" | "createdAt">>): Promise<ProjectRecord | null>;
+}
+
+export interface RequestProjectRepository {
+  getById(id: string): Promise<ProjectRecord | null>;
+  list(limit?: number): Promise<ProjectRecord[]>;
+}
+
+export interface RequestWorkflowResumeTarget {
+  workflowRunId: string;
+  projectId: string;
+  organizationId: string;
+}
+
+export interface RequestWorkflowResumeRepository {
+  findProjectForWorkflowRun(workflowRunId: string): Promise<RequestWorkflowResumeTarget | null>;
+}
+
+export interface ScopableProjectRepository extends ProjectRepository {
+  scopedToCreator(createdBy: string): RequestProjectRepository;
 }
 
 export interface WorkflowRunRepository {
@@ -58,10 +79,15 @@ export interface WorkflowCheckpointRepository {
 
 export interface PersistenceContainer {
   provider: "memory" | "supabase";
-  projects: ProjectRepository;
+  projects: ScopableProjectRepository;
   workflowRuns: WorkflowRunRepository;
   workflowTasks: WorkflowTaskRepository;
   attempts: AttemptRepository;
   checkpoints: WorkflowCheckpointRepository;
   artifacts: ArtifactStore;
+}
+
+export interface RequestPersistenceContainer {
+  projects: RequestProjectRepository;
+  workflowResume: RequestWorkflowResumeRepository;
 }

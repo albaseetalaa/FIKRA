@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   InMemoryArtifactStoreV2,
   InMemoryAttemptRepository,
@@ -5,8 +6,9 @@ import {
   InMemoryWorkflowCheckpointRepository,
   InMemoryWorkflowRunRepository,
   InMemoryWorkflowTaskRepository,
+  createInMemoryWorkflowResumeRepository,
 } from "./memory/repositories";
-import type { PersistenceContainer } from "./interfaces";
+import type { PersistenceContainer, RequestPersistenceContainer, RequestWorkflowResumeRepository } from "./interfaces";
 import { createAdminClient } from "../supabase/admin";
 import {
   SupabaseArtifactStore,
@@ -15,10 +17,12 @@ import {
   SupabaseWorkflowCheckpointRepository,
   SupabaseWorkflowRunRepository,
   SupabaseWorkflowTaskRepository,
+  createSupabaseWorkflowResumeRepository,
 } from "./supabase/repositories";
 import type { PersistenceProvider } from "./types";
 
 let globalContainer: PersistenceContainer | null = null;
+let globalSupabaseClient: SupabaseClient | null = null;
 
 function resolveProvider(): PersistenceProvider {
   const nodeEnv = process.env.NODE_ENV ?? "development";
@@ -71,9 +75,10 @@ function assertSupabaseConfigured() {
 
 export function resetPersistenceContainerForTests() {
   globalContainer = null;
+  globalSupabaseClient = null;
 }
 
-export function getPersistenceContainer(): PersistenceContainer {
+export function getSystemPersistenceContainer(): PersistenceContainer {
   if (globalContainer) {
     return globalContainer;
   }
@@ -84,6 +89,7 @@ export function getPersistenceContainer(): PersistenceContainer {
     assertSupabaseConfigured();
 
     const db = createAdminClient();
+    globalSupabaseClient = db;
 
     globalContainer = {
       provider: "supabase",
@@ -109,4 +115,53 @@ export function getPersistenceContainer(): PersistenceContainer {
   };
 
   return globalContainer;
+}
+
+// Compatibility alias — retained so existing callers (service.ts, test files)
+// keep working unmodified while they still reference the system container by
+// this name.
+export function getPersistenceContainer(): PersistenceContainer {
+  return getSystemPersistenceContainer();
+}
+
+export interface AuthorizationContext {
+  userId: string;
+}
+
+function validateUserId(userId: string): string {
+  if (userId.length === 0) {
+    throw new Error("getRequestPersistenceContainer requires a non-empty userId.");
+  }
+
+  if (userId !== userId.trim()) {
+    throw new Error("getRequestPersistenceContainer requires a userId with no leading or trailing whitespace.");
+  }
+
+  return userId;
+}
+
+export function getRequestPersistenceContainer(ctx: AuthorizationContext): RequestPersistenceContainer {
+  const userId = validateUserId(ctx.userId);
+  const system = getSystemPersistenceContainer();
+  const scoped = system.projects.scopedToCreator(userId);
+
+  let workflowResumeRepository: RequestWorkflowResumeRepository;
+  if (system.provider === "supabase") {
+    if (!globalSupabaseClient) {
+      throw new Error("Supabase client is not initialized.");
+    }
+    workflowResumeRepository = createSupabaseWorkflowResumeRepository(globalSupabaseClient, userId);
+  } else {
+    workflowResumeRepository = createInMemoryWorkflowResumeRepository(system, userId);
+  }
+
+  return {
+    projects: {
+      getById: scoped.getById.bind(scoped),
+      list: scoped.list.bind(scoped),
+    },
+    workflowResume: {
+      findProjectForWorkflowRun: workflowResumeRepository.findProjectForWorkflowRun.bind(workflowResumeRepository),
+    },
+  };
 }
