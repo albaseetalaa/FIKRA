@@ -4,9 +4,9 @@ import { getProjectStatus } from "@/lib/project-workflow/service";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ projectId: string }> }) {
   try {
-    await requireAuthenticatedUser();
+    const user = await requireAuthenticatedUser();
     const params = await ctx.params;
-    const project = await getProjectStatus(params.projectId);
+    const project = await getProjectStatus({ userId: user.id }, params.projectId);
 
     if (!project) {
       return NextResponse.json({ error: "Project not found." }, { status: 404 });

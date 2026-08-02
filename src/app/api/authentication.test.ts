@@ -20,7 +20,49 @@ const serviceMocks = vi.hoisted(() => ({
   listProjectHistory: vi.fn(),
   resumeWorkflow: vi.fn(),
   startBusinessStrategistExecution: vi.fn(),
+  authorizeProjectStart: vi.fn(),
+  authorizeWorkflowResume: vi.fn(),
 }));
+
+const projectStartMocks = vi.hoisted(() => {
+  class ProjectStartAuthorizationError extends Error {
+    constructor() {
+      super("Project start authorization failed.");
+      this.name = "ProjectStartAuthorizationError";
+    }
+  }
+
+  return {
+    ProjectStartAuthorizationError,
+  };
+});
+
+const workflowResumeMocks = vi.hoisted(() => {
+  class WorkflowResumeAuthorizationError extends Error {
+    constructor() {
+      super("Workflow resume authorization failed.");
+      this.name = "WorkflowResumeAuthorizationError";
+    }
+  }
+
+  return {
+    WorkflowResumeAuthorizationError,
+  };
+});
+
+const createProjectRpcMocks = vi.hoisted(() => {
+  class ProjectCreationValidationError extends Error {
+    constructor() {
+      super("Invalid project input.");
+      this.name = "ProjectCreationValidationError";
+    }
+  }
+
+  return {
+    ProjectCreationValidationError,
+    executeCreateProjectRpcMock: vi.fn(),
+  };
+});
 
 vi.mock("@/ai/reliability", () => {
   class ResumeRequestAlreadyConsumedError extends Error {}
@@ -51,7 +93,16 @@ vi.mock("@/lib/auth/requireAuthenticatedUser", () => ({
   requireAuthenticatedUser: authMocks.requireAuthenticatedUserMock,
 }));
 
-vi.mock("@/lib/project-workflow/service", () => serviceMocks);
+vi.mock("@/lib/project-workflow/service", () => ({
+  ...serviceMocks,
+  ProjectStartAuthorizationError: projectStartMocks.ProjectStartAuthorizationError,
+  WorkflowResumeAuthorizationError: workflowResumeMocks.WorkflowResumeAuthorizationError,
+}));
+
+vi.mock("@/lib/project-workflow/createProjectRpc", () => ({
+  executeCreateProjectRpc: createProjectRpcMocks.executeCreateProjectRpcMock,
+  ProjectCreationValidationError: createProjectRpcMocks.ProjectCreationValidationError,
+}));
 
 import { POST as createProject } from "./projects/create/route";
 import { GET as getProjectHistory } from "./projects/history/route";
