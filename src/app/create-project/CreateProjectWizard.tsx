@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import WizardLayout from "@/components/wizard/WizardLayout";
@@ -16,6 +16,13 @@ import WizardNavigation from "@/components/wizard/WizardNavigation";
 import { loadDraft, saveDraft } from "./draftStorage";
 import { createProjectSubmitter } from "./submitProject";
 import { initialWizardData, type WizardData } from "./types";
+import {
+  BUDGET_RANGE_OPTIONS,
+  LAUNCH_TIMELINE_OPTIONS,
+  suggestCurrencyForCountry,
+} from "@/ai/context/budgetTimelineOptions";
+import { isValidCurrencyCode } from "@/ai/context/currencyCatalog";
+import { formatCurrencyMismatchNotice, syncCurrencyForCountry } from "./currencySync";
 
 export default function CreateProjectWizard({ userId }: { userId: string }) {
   const router = useRouter();
@@ -33,13 +40,27 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
     if (step === 2) return !!data.industry && !!data.country;
     if (step === 3) return !!data.audience;
     if (step === 4) return data.goals.length > 0;
-    if (step === 5) return !!data.budget && !!data.timeline;
+    if (step === 5) return !!data.budget && !!data.timeline && isValidCurrencyCode(data.currency);
     return true;
   }, [step, data]);
 
   function update<K extends keyof WizardData>(key: K, value: WizardData[K]) {
     setData((d) => ({ ...d, [key]: value }));
   }
+
+  // Keep currency in sync with the selected country, without ever
+  // overwriting a value the user explicitly chose. See currencySync.ts for
+  // the (independently tested) sync rule and currencyInputMode's meaning.
+  useEffect(() => {
+    const next = syncCurrencyForCountry(
+      { currency: data.currency, currencyInputMode: data.currencyInputMode },
+      data.country,
+      suggestCurrencyForCountry,
+    );
+    if (next.currency !== data.currency) update("currency", next.currency);
+    if (next.currencyInputMode !== data.currencyInputMode) update("currencyInputMode", next.currencyInputMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.country]);
 
   function next() {
     if (!canContinue) return;
@@ -160,18 +181,42 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
 
             {step === 5 && (
               <div className="grid gap-4 sm:grid-cols-2">
+                <TextField
+                  label="Currency (3-letter code, e.g. JOD)"
+                  value={data.currency || ""}
+                  onChange={(v) => {
+                    const normalized = v.trim().toUpperCase();
+                    update("currency", normalized || undefined);
+                    update("currencyInputMode", "manual");
+                  }}
+                  required
+                />
+                {data.currency && !isValidCurrencyCode(data.currency) ? (
+                  <p className="text-xs text-rose-500 sm:col-span-2">
+                    Currency must be a 3-letter code, such as JOD, USD, or SAR.
+                  </p>
+                ) : null}
+                {data.currencyInputMode === "manual" && data.currency && isValidCurrencyCode(data.currency) ? (() => {
+                  const suggested = suggestCurrencyForCountry(data.country);
+                  if (!suggested || suggested === data.currency) return null;
+                  return (
+                    <p className="text-xs text-slate-500 sm:col-span-2">
+                      {formatCurrencyMismatchNotice(data.country, data.currency, suggested)}
+                    </p>
+                  );
+                })() : null}
                 <SelectField
                   label="Estimated budget"
                   value={data.budget}
                   onChange={(v) => update("budget", v)}
-                  options={["Under SAR 5,000", "SAR 5,000–15,000", "SAR 15,000–50,000", "SAR 50,000+", "Not sure yet"]}
+                  options={BUDGET_RANGE_OPTIONS.map((o) => ({ value: o.id, label: o.label }))}
                   required
                 />
                 <SelectField
                   label="Desired launch timeline"
                   value={data.timeline}
                   onChange={(v) => update("timeline", v)}
-                  options={["As soon as possible", "Within 30 days", "Within 3 months", "Within 6 months", "Flexible"]}
+                  options={LAUNCH_TIMELINE_OPTIONS.map((o) => ({ value: o.id, label: o.label }))}
                   required
                 />
               </div>

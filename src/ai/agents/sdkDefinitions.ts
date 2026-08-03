@@ -62,7 +62,16 @@ function baseDefinition(input: {
     category: input.category,
     supportedVerticals: ["any"],
     requiredCapabilities: ["external_api"],
-    requiredProjectContextFields: ["businessName", "businessDescription", "country", "businessVertical", "revenueModelType"],
+    requiredProjectContextFields: [
+      "businessName",
+      "businessDescription",
+      "country",
+      "businessVertical",
+      "revenueModelType",
+      "currency",
+      "budgetRange",
+      "launchTimelineMode",
+    ],
     inputArtifactTypes: input.inputArtifactTypes ?? [],
     outputArtifactType: input.outputArtifactType,
     promptBuilder: (ctx: AgentExecutionContext) =>

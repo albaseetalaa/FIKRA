@@ -1,3 +1,5 @@
+import type { LaunchTimelineMode } from "./budgetTimelineOptions";
+
 export type ContextValidationStatus = "valid" | "requires_user_input" | "invalid";
 
 export type BusinessStage = "idea" | "planning" | "operating" | "rebranding" | "expanding" | "unknown";
@@ -81,6 +83,7 @@ export type CurrencyResolutionSource =
   | "budget_hint"
   | "project_config"
   | "country_default"
+  | "legacy_country_fallback"
   | "unresolved";
 
 export interface BusinessVerticalClassification {
@@ -144,7 +147,14 @@ export interface ProjectContext {
   customerType: string | null;
   budgetRange: string | null;
   budgetCurrency: string | null;
+  budgetMin: number | null;
+  budgetMax: number | null;
   launchTimeline: string | null;
+  // "fixed" carries a concrete launchTimelineDays value; "asap" and
+  // "flexible" are valid, resolved states with no day count — never
+  // fabricate a number for them (see budgetTimelineOptions.ts).
+  launchTimelineMode: LaunchTimelineMode | null;
+  launchTimelineDays: number | null;
   selectedGoals: string[];
   currentDate: string;
   projectCreatedAt: string;

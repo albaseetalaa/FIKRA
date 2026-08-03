@@ -30,6 +30,7 @@ function buildCreatePayload(data: WizardData) {
     goals: data.goals,
     budget: data.budget,
     timeline: data.timeline,
+    currency: data.currency,
   };
 }
 

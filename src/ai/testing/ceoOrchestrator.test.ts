@@ -6,39 +6,15 @@ import { InMemoryArtifactStore } from "../store/inMemoryStore";
 import { globalArtifactStore } from "../store/setup";
 import * as mocks from "./mocks";
 import type { ProjectContext } from "../context";
+import { createProjectContextFixture } from "../context";
 import { AgentRegistry } from "../sdk/agentRegistry";
 import { sdkAgentDefinitions } from "../agents/sdkDefinitions";
 
-const eggreenContext: ProjectContext = {
+const eggreenContext: ProjectContext = createProjectContextFixture({
   projectId: "proj_eggreen",
   businessName: "Eggreen",
   businessDescription: "Healthy breakfast restaurant",
-  industry: "Restaurant & Food",
-  businessStage: "planning",
-  country: "Jordan",
-  city: "Amman",
-  currency: "JOD",
-  currencySource: "country_default",
-  targetAudience: ["professionals"],
-  customerAgeRange: null,
-  customerType: "Individuals",
-  budgetRange: null,
-  budgetCurrency: null,
-  launchTimeline: "Within 3 months",
-  selectedGoals: ["Develop strategy"],
-  currentDate: "2026-07-28T00:00:00.000Z",
-  projectCreatedAt: "2026-07-28T00:00:00.000Z",
-  businessVertical: "restaurant_food_service",
-  businessVerticalConfidence: 0.9,
-  primaryRevenueModel: "transaction_sales",
-  secondaryRevenueModels: [],
-  salesChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
-  revenueComponents: ["transaction_sales", "delivery_fee", "add_on_products"],
-  revenueModelType: "transaction_sales",
-  revenueChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
-  businessModelCategory: "transaction_sales",
-  contextVersion: "1.0.0",
-};
+});
 
 describe("CEO Orchestrator", () => {
   it("builds a typed execution plan dynamically", () => {
