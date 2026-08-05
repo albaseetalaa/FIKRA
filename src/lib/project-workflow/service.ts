@@ -7,7 +7,7 @@ import defaultModels from "../../ai/providers/models";
 import { normalizeProjectContext, type ProjectContextInput } from "../../ai/context";
 import type { Clock } from "../time/clock";
 import { systemClock } from "../time/clock";
-import type { WorkflowCheckpoint } from "../../ai/reliability";
+import type { ResumeResult, ResumeWorkflowInput, WorkflowCheckpoint } from "../../ai/reliability";
 import {
   InvalidCheckpointError,
   ResumeRequestAlreadyConsumedError,
@@ -22,10 +22,12 @@ import {
   mapTaskStatusToPersistence,
   mapWorkflowStatusToPersistence,
 } from "../../ai/workflow/stateMachine";
-import { getPersistenceContainer } from "../persistence/setup";
+import { getPersistenceContainer, getRequestPersistenceContainer, getSystemPersistenceContainer } from "../persistence/setup";
+import type { AuthorizationContext } from "../persistence/setup";
 import type { AttemptStatus, ProjectHistoryItem, ProjectStatusView, WorkflowCheckpointRecord, WorkflowRunRecord } from "../persistence/types";
 import type { ProjectContext } from "../../ai/context";
-import { buildProjectName, buildProjectStatusView, excerptIdea, makeAttemptId, makeProjectId, makeTaskId, makeWorkflowRunId, sanitizeErrorMessage } from "./store";
+import type { CreateProjectRpcExecutor } from "./createProjectRpc";
+import { buildProjectStatusView, excerptIdea, makeAttemptId, makeTaskId, makeWorkflowRunId, sanitizeErrorMessage } from "./store";
 import { resolveCapabilities } from "./capabilityRegistry";
 import { calculateProjectScore } from "./projectScore";
 
@@ -177,55 +179,42 @@ async function persistCheckpoint(checkpoint: WorkflowCheckpoint) {
   });
 }
 
-export async function createProject(input: string | CreateProjectInput) {
-  const persistence = getPersistenceContainer();
-  const payload: CreateProjectInput = typeof input === "string" ? { idea: input } : input;
-  const idea = payload.idea;
-  const projectId = makeProjectId();
-  const project = await persistence.projects.create({
-    id: projectId,
-    name: payload.businessName?.trim() || buildProjectName(idea),
-    idea,
-    activePipelineId: PIPELINE_ID,
-    metadata: {
-      businessName: payload.businessName?.trim() || null,
-      industry: payload.industry ?? null,
-      country: payload.country ?? null,
-      city: payload.city ?? null,
-      stage: payload.stage ?? null,
-      audience: payload.audience ?? null,
-      ageRange: payload.ageRange ?? null,
-      customerType: payload.customerType ?? null,
-      goals: payload.goals ?? [],
-      budget: payload.budget ?? null,
-      timeline: payload.timeline ?? null,
-      currency: payload.currency ?? null,
-    },
-  });
-
-  const run = await persistence.workflowRuns.create({
-    id: makeWorkflowRunId(),
-    projectId,
-    pipelineId: PIPELINE_ID,
-    status: "queued",
-    progress: 0,
+export async function createProject(
+  input: CreateProjectInput,
+  executor: CreateProjectRpcExecutor,
+): Promise<{ projectId: string; status: "queued"; workflowRunId: string }> {
+  const result = await executor.execute({
+    p_idea: input.idea,
+    p_business_name: input.businessName ?? null,
+    p_industry: input.industry ?? null,
+    p_country: input.country ?? null,
+    p_city: input.city ?? null,
+    p_stage: input.stage ?? null,
+    p_audience: input.audience ?? null,
+    p_age_range: input.ageRange ?? null,
+    p_customer_type: input.customerType ?? null,
+    p_goals: input.goals ?? null,
+    p_budget: input.budget ?? null,
+    p_timeline: input.timeline ?? null,
+    p_currency: input.currency ?? null,
   });
 
   return {
-    projectId: project.id,
-    status: project.status,
-    workflowRunId: run.id,
+    projectId: result.projectId,
+    status: "queued",
+    workflowRunId: result.workflowRunId,
   };
 }
 
-export async function listProjectHistory(limit = 30): Promise<ProjectHistoryItem[]> {
-  const persistence = getPersistenceContainer();
-  const projects = await persistence.projects.list(limit);
+export async function listProjectHistory(ctx: AuthorizationContext, limit = 30): Promise<ProjectHistoryItem[]> {
+  const request = getRequestPersistenceContainer(ctx);
+  const projects = await request.projects.list(limit);
+  const system = getSystemPersistenceContainer();
   const items: ProjectHistoryItem[] = [];
 
   for (const project of projects) {
-    const run = await persistence.workflowRuns.getLatestByProject(project.id);
-    const checkpoint = run ? await persistence.checkpoints.getActiveByWorkflowRunId(run.id) : null;
+    const run = await system.workflowRuns.getLatestByProject(project.id);
+    const checkpoint = run ? await system.checkpoints.getActiveByWorkflowRunId(run.id) : null;
     items.push({
       id: project.id,
       name: project.name,
@@ -257,48 +246,108 @@ async function ensureQueuedRun(projectId: string): Promise<WorkflowRunRecord | n
   });
 }
 
-export async function startBusinessStrategistExecution(projectId: string) {
-  if (runningProjects.has(projectId)) return;
+export interface VerifiedProjectHandoff {
+  projectId: string;
+  organizationId: string;
+}
 
-  const persistence = getPersistenceContainer();
-  const project = await persistence.projects.getById(projectId);
-  if (!project) {
-    throw new Error("Project not found.");
+export class ProjectStartAuthorizationError extends Error {
+  constructor() {
+    super("Project start authorization failed.");
+    this.name = "ProjectStartAuthorizationError";
+  }
+}
+
+export async function authorizeProjectStart(ctx: AuthorizationContext, projectId: string): Promise<VerifiedProjectHandoff | null> {
+  const request = getRequestPersistenceContainer(ctx);
+  const project = await request.projects.getById(projectId);
+  if (!project || project.organizationId === null) {
+    return null;
   }
 
-  const workflowRun = await ensureQueuedRun(projectId);
+  return {
+    projectId: project.id,
+    organizationId: project.organizationId,
+  };
+}
+
+export interface VerifiedWorkflowResumeHandoff {
+  workflowRunId: string;
+  projectId: string;
+  organizationId: string;
+}
+
+export async function authorizeWorkflowResume(
+  ctx: AuthorizationContext,
+  workflowRunId: string,
+): Promise<VerifiedWorkflowResumeHandoff | null> {
+  const request = getRequestPersistenceContainer(ctx);
+  const target = await request.workflowResume.findProjectForWorkflowRun(workflowRunId);
+
+  if (!target) {
+    return null;
+  }
+
+  return {
+    workflowRunId: target.workflowRunId,
+    projectId: target.projectId,
+    organizationId: target.organizationId,
+  };
+}
+
+export async function startBusinessStrategistExecution(handoff: VerifiedProjectHandoff): Promise<void> {
+  const system = getSystemPersistenceContainer();
+  const project = await system.projects.getById(handoff.projectId);
+  if (!project || project.organizationId === null || project.organizationId !== handoff.organizationId) {
+    throw new ProjectStartAuthorizationError();
+  }
+
+  if (runningProjects.has(project.id)) return;
+
+  const workflowRun = await ensureQueuedRun(project.id);
   if (!workflowRun) {
     throw new Error("No workflow run available.");
   }
 
-  runningProjects.add(projectId);
+  runningProjects.add(project.id);
   void runExecution(project.id, workflowRun.id, project.idea).finally(() => {
-    runningProjects.delete(projectId);
+    runningProjects.delete(project.id);
   });
 }
 
-export async function resumeWorkflow(input: {
-  workflowRunId: string;
-  requestId: string;
-  checkpointVersion: number;
-  values: Record<string, unknown>;
-}) {
-  const persistence = getPersistenceContainer();
-  const run = await persistence.workflowRuns.getById(input.workflowRunId);
-  if (!run) {
-    throw new InvalidCheckpointError("Workflow run not found.");
+export class WorkflowResumeAuthorizationError extends Error {
+  constructor() {
+    super("Workflow resume authorization failed.");
+    this.name = "WorkflowResumeAuthorizationError";
+  }
+}
+
+export async function resumeWorkflow(
+  handoff: VerifiedWorkflowResumeHandoff,
+  input: Omit<ResumeWorkflowInput, "workflowRunId">,
+): Promise<ResumeResult> {
+  const system = getSystemPersistenceContainer();
+
+  const project = await system.projects.getById(handoff.projectId);
+  if (
+    !project ||
+    project.id !== handoff.projectId ||
+    project.organizationId === null ||
+    project.organizationId !== handoff.organizationId
+  ) {
+    throw new WorkflowResumeAuthorizationError();
   }
 
-  const project = await persistence.projects.getById(run.projectId);
-  if (!project) {
-    throw new InvalidCheckpointError("Project not found.");
+  const run = await system.workflowRuns.getById(handoff.workflowRunId);
+  if (!run || run.id !== handoff.workflowRunId || run.projectId !== handoff.projectId) {
+    throw new WorkflowResumeAuthorizationError();
   }
 
   if (project.status === "completed" || project.status === "failed") {
     throw new WorkflowNotPausedError("Completed or failed workflows cannot be resumed.");
   }
 
-  const checkpointRecord = await persistence.checkpoints.getActiveByWorkflowRunId(input.workflowRunId);
+  const checkpointRecord = await system.checkpoints.getActiveByWorkflowRunId(handoff.workflowRunId);
   if (!checkpointRecord) {
     throw new WorkflowNotPausedError();
   }
@@ -325,8 +374,8 @@ export async function resumeWorkflow(input: {
     throw new ResumeValidationError(validation.message);
   }
 
-  const consumed = await persistence.checkpoints.consumeRequest({
-    workflowRunId: input.workflowRunId,
+  const consumed = await system.checkpoints.consumeRequest({
+    workflowRunId: handoff.workflowRunId,
     requestId: input.requestId,
     checkpointVersion: input.checkpointVersion,
   });
@@ -347,7 +396,7 @@ export async function resumeWorkflow(input: {
 
   runningProjects.add(project.id);
   try {
-    await runExecution(project.id, input.workflowRunId, project.idea, {
+    await runExecution(project.id, handoff.workflowRunId, project.idea, {
       resumeCheckpoint: {
         ...consumedCheckpoint,
         executionContext: {
@@ -361,26 +410,27 @@ export async function resumeWorkflow(input: {
     runningProjects.delete(project.id);
   }
 
-  const latestCheckpoint = await persistence.checkpoints.getActiveByWorkflowRunId(input.workflowRunId);
-  const updatedRun = await persistence.workflowRuns.getById(input.workflowRunId);
+  const latestCheckpoint = await system.checkpoints.getActiveByWorkflowRunId(handoff.workflowRunId);
+  const updatedRun = await system.workflowRuns.getById(handoff.workflowRunId);
   if (!updatedRun) {
     throw new InvalidCheckpointError("Workflow run missing after resume.");
   }
 
   if (latestCheckpoint?.workflowStatus === "waiting_for_user") {
+    const resumedCheckpoint = toWorkflowCheckpoint(latestCheckpoint);
     return {
       state: "paused_again",
-      workflowRunId: input.workflowRunId,
-      checkpointVersion: latestCheckpoint.checkpointVersion,
+      workflowRunId: handoff.workflowRunId,
+      checkpointVersion: resumedCheckpoint.checkpointVersion,
       message: "Workflow paused again and requires additional input.",
-      nextRequest: latestCheckpoint.userInputRequest,
+      nextRequest: resumedCheckpoint.userInputRequest,
     };
   }
 
   if (updatedRun.status === "completed") {
     return {
       state: "resumed_completed",
-      workflowRunId: input.workflowRunId,
+      workflowRunId: handoff.workflowRunId,
       checkpointVersion: latestCheckpoint?.checkpointVersion ?? input.checkpointVersion + 1,
       message: "Workflow resumed and completed.",
     };
@@ -388,18 +438,19 @@ export async function resumeWorkflow(input: {
 
   return {
     state: "resumed_running",
-    workflowRunId: input.workflowRunId,
+    workflowRunId: handoff.workflowRunId,
     checkpointVersion: latestCheckpoint?.checkpointVersion ?? input.checkpointVersion + 1,
     message: "Workflow resumed and is running.",
   };
 }
 
-export async function getProjectStatus(projectId: string): Promise<ProjectStatusView | null> {
-  const persistence = getPersistenceContainer();
-  const project = await persistence.projects.getById(projectId);
+export async function getProjectStatus(ctx: AuthorizationContext, projectId: string): Promise<ProjectStatusView | null> {
+  const request = getRequestPersistenceContainer(ctx);
+  const project = await request.projects.getById(projectId);
   if (!project) return null;
 
-  const run = await persistence.workflowRuns.getLatestByProject(projectId);
+  const system = getSystemPersistenceContainer();
+  const run = await system.workflowRuns.getLatestByProject(project.id);
   if (!run) {
     return {
       projectId: project.id,
@@ -420,18 +471,18 @@ export async function getProjectStatus(projectId: string): Promise<ProjectStatus
     };
   }
 
-  const businessPlanArtifact = await loadLatestBusinessPlan(projectId, run.id);
-  const marketResearchArtifact = await loadLatestMarketResearchReport(projectId, run.id);
-  const financialModelArtifact = await loadLatestFinancialModel(projectId, run.id);
-  const projectScoreArtifact = await loadLatestProjectScore(projectId, run.id);
-  const allArtifacts = await persistence.artifacts.list(projectId);
+  const businessPlanArtifact = await loadLatestBusinessPlan(project.id, run.id);
+  const marketResearchArtifact = await loadLatestMarketResearchReport(project.id, run.id);
+  const financialModelArtifact = await loadLatestFinancialModel(project.id, run.id);
+  const projectScoreArtifact = await loadLatestProjectScore(project.id, run.id);
+  const allArtifacts = await system.artifacts.list(project.id);
   const selectedGoals = Array.isArray(project.metadata?.goals) ? (project.metadata?.goals as string[]) : [];
   const capabilities = resolveCapabilities({
     artifacts: allArtifacts,
     selectedGoals,
   });
   const baseView = buildProjectStatusView(project, run, businessPlanArtifact, marketResearchArtifact, financialModelArtifact);
-  const checkpoint = await persistence.checkpoints.getActiveByWorkflowRunId(run.id);
+  const checkpoint = await system.checkpoints.getActiveByWorkflowRunId(run.id);
   if (!checkpoint) {
     return {
       ...baseView,

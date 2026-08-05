@@ -5,8 +5,8 @@ import { listProjectHistory } from "@/lib/project-workflow/service";
 
 export async function GET() {
   try {
-    await requireAuthenticatedUser();
-    const items = await listProjectHistory(50);
+    const user = await requireAuthenticatedUser();
+    const items = await listProjectHistory({ userId: user.id }, 50);
     const payload: ProjectHistoryResponse = { items };
     return NextResponse.json(payload);
   } catch (error: unknown) {

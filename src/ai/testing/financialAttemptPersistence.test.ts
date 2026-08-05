@@ -1,11 +1,65 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { createProject, getProjectStatus, startBusinessStrategistExecution } from "../../lib/project-workflow/service";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { authorizeProjectStart, createProject, getProjectStatus, startBusinessStrategistExecution } from "../../lib/project-workflow/service";
 import { globalProviderManager } from "../providers/manager";
 import type AIProvider from "../providers/interface";
 import { validBusinessPlan, validFinancialModel, validMarketResearchReport } from "./mocks";
-import { getPersistenceContainer, resetPersistenceContainerForTests } from "../../lib/persistence/setup";
+import { getPersistenceContainer, getSystemPersistenceContainer, resetPersistenceContainerForTests } from "../../lib/persistence/setup";
 import type { WorkflowTaskRecord } from "../../lib/persistence/types";
+import type { CreateProjectRpcArgs, CreateProjectRpcExecutor } from "../../lib/project-workflow/createProjectRpc";
 import defaultModels from "../providers/models";
+
+const TEST_USER_ID = "user_financial_attempt_test";
+const TEST_ORGANIZATION_ID = "org_financial_attempt_test";
+const TEST_PROJECT_ID = "proj_financial_attempt_test";
+const TEST_WORKFLOW_RUN_ID = "run_financial_attempt_test";
+const TEST_PIPELINE_ID = "ceo_orchestrated";
+
+function createFakeCreateProjectRpcExecutor(): CreateProjectRpcExecutor {
+  return {
+    execute: vi.fn(async (args: CreateProjectRpcArgs) => {
+      const system = getSystemPersistenceContainer();
+
+      await system.projects.create({
+        id: TEST_PROJECT_ID,
+        name:
+          args.p_business_name ??
+          (args.p_idea.trim().split(/\s+/).slice(0, 6).join(" ").slice(0, 120) || "New Project"),
+        idea: args.p_idea,
+        activePipelineId: TEST_PIPELINE_ID,
+        metadata: {
+          businessName: args.p_business_name,
+          industry: args.p_industry,
+          country: args.p_country,
+          city: args.p_city,
+          stage: args.p_stage,
+          audience: args.p_audience,
+          ageRange: args.p_age_range,
+          customerType: args.p_customer_type,
+          goals: args.p_goals ?? [],
+          budget: args.p_budget,
+          timeline: args.p_timeline,
+          currency: args.p_currency,
+        },
+        organizationId: TEST_ORGANIZATION_ID,
+        createdBy: TEST_USER_ID,
+      });
+
+      await system.workflowRuns.create({
+        id: TEST_WORKFLOW_RUN_ID,
+        projectId: TEST_PROJECT_ID,
+        pipelineId: TEST_PIPELINE_ID,
+        status: "queued",
+        progress: 0,
+      });
+
+      return {
+        projectId: TEST_PROJECT_ID,
+        organizationId: TEST_ORGANIZATION_ID,
+        workflowRunId: TEST_WORKFLOW_RUN_ID,
+      };
+    }),
+  };
+}
 
 function baseResult(output: unknown) {
   return {
@@ -36,12 +90,12 @@ function baseResult(output: unknown) {
 
 async function waitForTerminal(projectId: string) {
   for (let i = 0; i < 60; i += 1) {
-    const status = await getProjectStatus(projectId);
+    const status = await getProjectStatus({ userId: TEST_USER_ID }, projectId);
     if (!status) return null;
     if (status.status === "completed" || status.status === "failed") return status;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  return getProjectStatus(projectId);
+  return getProjectStatus({ userId: TEST_USER_ID }, projectId);
 }
 
 describe("financial attempt persistence", () => {
@@ -120,23 +174,37 @@ describe("financial attempt persistence", () => {
       });
     }
 
-    const created = await createProject({
-      idea: "Eggreen healthy breakfast restaurant in Amman",
-      businessName: "Eggreen",
-      industry: "Restaurant & Food",
-      country: "Jordan",
-      city: "Amman",
-      stage: "Planning",
-      audience: "Young professionals",
-      ageRange: "18-45",
-      customerType: "Individuals",
-      goals: ["Build financial model"],
-      budget: "50000-80000",
-      timeline: "3 months",
-      currency: "JOD",
-    });
+    const createProjectExecutor = createFakeCreateProjectRpcExecutor();
+    const created = await createProject(
+      {
+        idea: "Eggreen healthy breakfast restaurant in Amman",
+        businessName: "Eggreen",
+        industry: "Restaurant & Food",
+        country: "Jordan",
+        city: "Amman",
+        stage: "Planning",
+        audience: "Young professionals",
+        ageRange: "18-45",
+        customerType: "Individuals",
+        goals: ["Build financial model"],
+        budget: "50000-80000",
+        timeline: "3 months",
+        currency: "JOD",
+      },
+      createProjectExecutor,
+    );
+    expect(createProjectExecutor.execute).toHaveBeenCalledTimes(1);
 
-    await startBusinessStrategistExecution(created.projectId);
+    const handoff = await authorizeProjectStart({ userId: TEST_USER_ID }, created.projectId);
+    expect(handoff).toEqual({
+      projectId: TEST_PROJECT_ID,
+      organizationId: TEST_ORGANIZATION_ID,
+    });
+    if (!handoff) {
+      throw new Error("Expected project-start authorization to succeed.");
+    }
+
+    await startBusinessStrategistExecution(handoff);
     const terminal = await waitForTerminal(created.projectId);
     expect(terminal?.status).toBe("completed");
 

@@ -7,18 +7,22 @@ import {
   StaleCheckpointError,
   WorkflowNotPausedError,
 } from "@/ai/reliability";
-import { resumeWorkflow } from "@/lib/project-workflow/service";
+import { authorizeWorkflowResume, resumeWorkflow, WorkflowResumeAuthorizationError } from "@/lib/project-workflow/service";
 import { resumeRequestBodySchema, resumeResponseSchema } from "@/lib/project-workflow/resumeContract";
 
 export async function POST(req: Request, ctx: { params: Promise<{ workflowRunId: string }> }) {
   try {
-    await requireAuthenticatedUser();
+    const user = await requireAuthenticatedUser();
     const params = await ctx.params;
     const payload = await req.json();
     const body = resumeRequestBodySchema.parse(payload);
 
-    const result = await resumeWorkflow({
-      workflowRunId: params.workflowRunId,
+    const handoff = await authorizeWorkflowResume({ userId: user.id }, params.workflowRunId);
+    if (!handoff) {
+      return NextResponse.json({ error: "Workflow not found." }, { status: 404 });
+    }
+
+    const result = await resumeWorkflow(handoff, {
       requestId: body.requestId,
       checkpointVersion: body.checkpointVersion,
       values: body.values,
@@ -31,6 +35,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ workflowRunId:
         { error: error.message },
         { status: 401 },
       );
+    }
+
+    if (error instanceof WorkflowResumeAuthorizationError) {
+      return NextResponse.json({ error: "Workflow not found." }, { status: 404 });
     }
 
     if (error instanceof ResumeValidationError) {

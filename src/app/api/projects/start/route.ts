@@ -1,10 +1,10 @@
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/requireAuthenticatedUser";
 import { NextResponse } from "next/server";
-import { getProjectStatus, startBusinessStrategistExecution } from "@/lib/project-workflow/service";
+import { authorizeProjectStart, ProjectStartAuthorizationError, startBusinessStrategistExecution } from "@/lib/project-workflow/service";
 
 export async function POST(req: Request) {
   try {
-    await requireAuthenticatedUser();
+    const user = await requireAuthenticatedUser();
     const body = (await req.json()) as { projectId?: string };
     const projectId = String(body?.projectId ?? "").trim();
 
@@ -12,18 +12,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "projectId is required." }, { status: 400 });
     }
 
-    const project = await getProjectStatus(projectId);
-    if (!project) {
+    const handoff = await authorizeProjectStart({ userId: user.id }, projectId);
+    if (!handoff) {
       return NextResponse.json({ error: "Project not found." }, { status: 404 });
     }
 
-    await startBusinessStrategistExecution(projectId);
+    await startBusinessStrategistExecution(handoff);
     return NextResponse.json({ status: "running" });
   } catch (error: unknown) {
     if (error instanceof AuthenticationRequiredError) {
       return NextResponse.json(
         { error: error.message },
         { status: 401 },
+      );
+    }
+
+    if (error instanceof ProjectStartAuthorizationError) {
+      return NextResponse.json(
+        { error: "Project not found." },
+        { status: 404 },
       );
     }
 
