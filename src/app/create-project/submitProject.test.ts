@@ -74,6 +74,27 @@ describe("createProjectSubmitter", () => {
     expect(createBody).not.toHaveProperty("ownerId");
   });
 
+  it("never includes currencyInputMode — it is wizard/draft UI state only, never project business data", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/projects/create") return jsonResponse(200, { projectId: "proj_test_1" });
+      return jsonResponse(200, { status: "running" });
+    });
+
+    const submit = createProjectSubmitter(fetchImpl as unknown as typeof fetch);
+    const dataWithCurrencyMode: WizardData = {
+      ...validData,
+      currency: "JOD",
+      currencyInputMode: "suggested",
+    };
+
+    await submit(dataWithCurrencyMode);
+
+    const createBody = JSON.parse((fetchImpl.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(createBody.currency).toBe("JOD");
+    expect(createBody).not.toHaveProperty("currencyInputMode");
+  });
+
   it("collapses concurrent calls into a single in-flight submission (duplicate submit prevention)", async () => {
     let createCalls = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {

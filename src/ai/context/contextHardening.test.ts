@@ -48,7 +48,7 @@ describe("project context hardening", () => {
       customerType: "Individuals",
       budgetRange: "JOD 15,000-50,000",
       budgetCurrency: null,
-      launchTimeline: "Within 3 months",
+      launchTimeline: "within_3_months",
       selectedGoals: ["Develop a business strategy"],
       projectCreatedAt: "2026-07-28T00:00:00.000Z",
       currentDate: "2026-07-28T00:00:00.000Z",

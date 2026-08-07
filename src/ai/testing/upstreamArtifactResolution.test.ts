@@ -6,6 +6,7 @@ import agents from "../agents/definitions";
 import mocks from "./mocks";
 import { globalAgentFactory } from "../sdk/setup";
 import { sdkAgentDefinitions } from "../agents/sdkDefinitions";
+import { createProjectContextFixture } from "../context";
 
 const reorderedDependencyPipeline: Pipeline = {
   id: "reordered_dependency_pipeline",
@@ -55,36 +56,11 @@ describe("upstream artifact resolution", () => {
     try {
       const tasks = await orch.startPipeline(reorderedDependencyPipeline, "proj-upstream-order", {
         projectIdea: "Build business, market and financial outputs",
-        projectContext: {
+        projectContext: createProjectContextFixture({
           projectId: "proj-upstream-order",
           businessName: "Eggreen",
           businessDescription: "Build business, market and financial outputs",
-          industry: "Restaurant & Food",
-          businessStage: "planning",
-          country: "Jordan",
-          city: "Amman",
-          currency: "JOD",
-          currencySource: "country_default",
-          targetAudience: ["professionals"],
-          customerAgeRange: null,
-          customerType: "Individuals",
-          budgetRange: null,
-          budgetCurrency: null,
-          launchTimeline: "Within 3 months",
-          selectedGoals: ["Develop strategy"],
-          currentDate: "2026-07-28T00:00:00.000Z",
-          projectCreatedAt: "2026-07-28T00:00:00.000Z",
-          businessVertical: "restaurant_food_service",
-          businessVerticalConfidence: 0.9,
-          primaryRevenueModel: "transaction_sales",
-          secondaryRevenueModels: [],
-          salesChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
-          revenueComponents: ["transaction_sales", "delivery_fee", "add_on_products"],
-          revenueModelType: "transaction_sales",
-          revenueChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
-          businessModelCategory: "transaction_sales",
-          contextVersion: "1.0.0",
-        },
+        }),
       });
 
       expect(tasks.every((task) => task.status === "completed")).toBe(true);

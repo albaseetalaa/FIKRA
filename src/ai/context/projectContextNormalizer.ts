@@ -1,6 +1,7 @@
 import { classifyBusinessVertical } from "./businessVerticalClassifier";
 import { resolveCurrency } from "./currencyResolver";
 import { classifyRevenueModel } from "./revenueModelClassifier";
+import { findBudgetRangeOption, findLaunchTimelineOption } from "./budgetTimelineOptions";
 import type { BusinessStage, ProjectContext, ProjectContextInput, ProjectContextNormalizationResult } from "./types";
 import type { Clock } from "../../lib/time/clock";
 import { systemClock } from "../../lib/time/clock";
@@ -71,7 +72,14 @@ function detectContradictions(input: {
   if (input.vertical === "restaurant_food_service" && input.primaryRevenueModel === "subscription") {
     contradictions.push("Restaurant vertical conflicts with pure subscription revenue model.");
   }
-  if (input.stage === "operating" && /as soon as possible|within 30 days/i.test(input.launchTimeline ?? "")) {
+  // Matches both the canonical timeline ids new submissions send ("asap",
+  // "within_30_days") and legacy free text ("As soon as possible", "Within
+  // 30 days") so this check does not silently stop firing once onboarding
+  // switches to canonical ids.
+  if (
+    input.stage === "operating" &&
+    /^asap$|^within_30_days$|as soon as possible|within 30 days/i.test(input.launchTimeline ?? "")
+  ) {
     contradictions.push("Operating business stage conflicts with greenfield launch timeline.");
   }
   if (input.vertical === "saas_software" && /restaurant|kitchen|menu|dine\s?-?in|drive\s?-?thru/i.test(input.businessDescription.toLowerCase())) {
@@ -136,11 +144,41 @@ export function normalizeProjectContext(
     primaryRevenueModel: revenue.primaryRevenueModel,
   });
 
+  const budgetRangeValue = input.budgetRange?.trim() || null;
+  const launchTimelineValue = input.launchTimeline?.trim() || null;
+
+  const budgetOption = findBudgetRangeOption(budgetRangeValue);
+  const launchTimelineOption = findLaunchTimelineOption(launchTimelineValue);
+
+  const budgetMin = budgetOption?.min ?? null;
+  const budgetMax = budgetOption?.max ?? null;
+  const launchTimelineMode = launchTimelineOption?.mode ?? null;
+  const launchTimelineDays = launchTimelineOption?.days ?? null;
+
+  // A present-but-unmappable legacy value must never be silently turned
+  // into fabricated numeric bounds — it is represented as unresolved and
+  // surfaced here so context-policy validation can see it, rather than
+  // guessed at.
+  if (budgetRangeValue && !budgetOption) {
+    validationNotes.push(
+      `budgetRange '${budgetRangeValue}' does not match a canonical budget option; budgetMin/budgetMax are unresolved.`,
+    );
+  }
+  if (launchTimelineValue && !launchTimelineOption) {
+    validationNotes.push(
+      `launchTimeline '${launchTimelineValue}' does not match a canonical timeline option; launchTimelineDays is unresolved.`,
+    );
+  }
+
   const missingRequiredContext: string[] = [];
   if (!businessDescription) missingRequiredContext.push("businessDescription");
   if (!industry) missingRequiredContext.push("industry");
   if (!country) missingRequiredContext.push("country");
   if (currency.currencyCode === null) missingRequiredContext.push("currency");
+  if (!budgetRangeValue) missingRequiredContext.push("budgetRange");
+  if (!launchTimelineValue) missingRequiredContext.push("launchTimeline");
+  if (launchTimelineMode === null) missingRequiredContext.push("launchTimelineMode");
+  if (launchTimelineMode === "fixed" && launchTimelineDays === null) missingRequiredContext.push("launchTimelineDays");
 
   const status = contradictions.length > 0
     ? "invalid"
@@ -161,9 +199,13 @@ export function normalizeProjectContext(
     targetAudience: normalizeAudience(input.targetAudience),
     customerAgeRange: input.customerAgeRange?.trim() || null,
     customerType: input.customerType?.trim() || null,
-    budgetRange: input.budgetRange?.trim() || null,
+    budgetRange: budgetRangeValue,
     budgetCurrency: input.budgetCurrency?.trim().toUpperCase() || null,
-    launchTimeline: input.launchTimeline?.trim() || null,
+    budgetMin,
+    budgetMax,
+    launchTimeline: launchTimelineValue,
+    launchTimelineMode,
+    launchTimelineDays,
     selectedGoals,
     currentDate: safeCurrentDate,
     projectCreatedAt: safeProjectCreatedAt,

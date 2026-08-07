@@ -145,6 +145,17 @@ function enforceContextPolicies(input: {
     );
   }
 
+  // launchTimelineDays only has a real value for the "fixed" mode — "asap"
+  // and "flexible" are valid, resolved states with a null day count, so
+  // requiring launchTimelineDays unconditionally (via requiredProjectContextFields)
+  // would wrongly reject them. Enforced here instead, conditioned on mode.
+  if (
+    input.executionContext.projectContext.launchTimelineMode === "fixed"
+    && input.executionContext.projectContext.launchTimelineDays === null
+  ) {
+    issues.push("Missing required ProjectContext field 'launchTimelineDays' for a fixed launch timeline.");
+  }
+
   return issues;
 }
 

@@ -97,7 +97,12 @@ describe("projects create route", () => {
   });
 
   it("2: an authenticated valid request threads the parsed input and the RPC executor, and returns the existing response shape", async () => {
-    const input = { idea: "A sufficiently detailed project idea for testing." };
+    const input = {
+      idea: "A sufficiently detailed project idea for testing.",
+      currency: "JOD",
+      budget: "under_5000",
+      timeline: "within_30_days",
+    };
 
     const res = await POST(jsonRequest(input));
     const body = (await res.json()) as Record<string, unknown>;
@@ -132,7 +137,12 @@ describe("projects create route", () => {
   it("4: ProjectCreationValidationError maps to HTTP 400 with a safe generic public error message", async () => {
     createProjectMock.mockRejectedValueOnce(new ProjectCreationValidationErrorMock("idea must be at least 10 characters."));
 
-    const res = await POST(jsonRequest({ idea: "A sufficiently detailed project idea." }));
+    const res = await POST(jsonRequest({
+      idea: "A sufficiently detailed project idea.",
+      currency: "JOD",
+      budget: "under_5000",
+      timeline: "within_30_days",
+    }));
     const body = (await res.json()) as { error?: string };
 
     expect(res.status).toBe(400);
@@ -143,7 +153,12 @@ describe("projects create route", () => {
   it("5a: ProjectCreationPersistenceError preserves the existing 500 response", async () => {
     createProjectMock.mockRejectedValueOnce(new ProjectCreationPersistenceErrorMock("db exploded"));
 
-    const res = await POST(jsonRequest({ idea: "A sufficiently detailed project idea." }));
+    const res = await POST(jsonRequest({
+      idea: "A sufficiently detailed project idea.",
+      currency: "JOD",
+      budget: "under_5000",
+      timeline: "within_30_days",
+    }));
     const body = (await res.json()) as { error?: string };
 
     expect(res.status).toBe(500);
@@ -153,11 +168,125 @@ describe("projects create route", () => {
   it("5b: an unexpected error preserves the existing 500 response", async () => {
     createProjectMock.mockRejectedValueOnce(new Error("boom"));
 
-    const res = await POST(jsonRequest({ idea: "A sufficiently detailed project idea." }));
+    const res = await POST(jsonRequest({
+      idea: "A sufficiently detailed project idea.",
+      currency: "JOD",
+      budget: "under_5000",
+      timeline: "within_30_days",
+    }));
     const body = (await res.json()) as { error?: string };
 
     expect(res.status).toBe(500);
     expect(body.error).toBe("Could not create project.");
+  });
+
+  it("7: missing currency fails project submission with HTTP 400", async () => {
+    const res = await POST(jsonRequest({ idea: "A sufficiently detailed project idea.", budget: "under_5000", timeline: "within_30_days" }));
+    const body = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Currency is required.");
+    expect(createProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("7b: missing budget fails project submission with HTTP 400, independently of currency/timeline", async () => {
+    const res = await POST(jsonRequest({ idea: "A sufficiently detailed project idea.", currency: "JOD", timeline: "within_30_days" }));
+    const body = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Budget is required.");
+    expect(createProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("7c: missing timeline fails project submission with HTTP 400, independently of currency/budget", async () => {
+    const res = await POST(jsonRequest({ idea: "A sufficiently detailed project idea.", currency: "JOD", budget: "under_5000" }));
+    const body = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Launch timeline is required.");
+    expect(createProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("8: an invalid currency code fails project submission with HTTP 400", async () => {
+    const res = await POST(jsonRequest({
+      idea: "A sufficiently detailed project idea.",
+      currency: "Jordanian Dinar",
+      budget: "under_5000",
+      timeline: "within_30_days",
+    }));
+    const body = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Currency must be a 3-letter code, such as JOD, USD, or SAR.");
+    expect(createProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("8b: a fabricated ISO-shaped currency code (real shape, not a real currency) fails project submission with HTTP 400", async () => {
+    const res = await POST(jsonRequest({
+      idea: "A sufficiently detailed project idea.",
+      currency: "XYZ",
+      budget: "under_5000",
+      timeline: "within_30_days",
+    }));
+    const body = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Currency must be a 3-letter code, such as JOD, USD, or SAR.");
+    expect(createProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("9: currency is normalized to uppercase before reaching createProject", async () => {
+    await POST(jsonRequest({
+      idea: "A sufficiently detailed project idea.",
+      currency: "jod",
+      budget: "under_5000",
+      timeline: "within_30_days",
+    }));
+
+    const [receivedInput] = createProjectMock.mock.calls[0] as [Record<string, unknown>, { execute: unknown }];
+    expect(receivedInput.currency).toBe("JOD");
+  });
+
+  it("10: an unrecognized budget id fails project submission with HTTP 400", async () => {
+    const res = await POST(
+      jsonRequest({ idea: "A sufficiently detailed project idea.", currency: "JOD", budget: "Under SAR 5,000" }),
+    );
+    const body = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Please select a valid budget option.");
+    expect(createProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("11: an unrecognized timeline id fails project submission with HTTP 400", async () => {
+    const res = await POST(
+      jsonRequest({
+        idea: "A sufficiently detailed project idea.",
+        currency: "JOD",
+        budget: "under_5000",
+        timeline: "Within 30 days",
+      }),
+    );
+    const body = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Please select a valid launch timeline option.");
+    expect(createProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("12: canonical budget and timeline ids are accepted and passed through unchanged", async () => {
+    await POST(
+      jsonRequest({
+        idea: "A sufficiently detailed project idea.",
+        currency: "JOD",
+        budget: "under_5000",
+        timeline: "within_30_days",
+      }),
+    );
+
+    const [receivedInput] = createProjectMock.mock.calls[0] as [Record<string, unknown>, { execute: unknown }];
+    expect(receivedInput.budget).toBe("under_5000");
+    expect(receivedInput.timeline).toBe("within_30_days");
   });
 
   it("6: the route source does not import or call createAdminClient", async () => {

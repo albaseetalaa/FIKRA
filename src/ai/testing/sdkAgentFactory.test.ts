@@ -7,39 +7,15 @@ import type AIProvider from "../providers/interface";
 import { sdkAgentDefinitions } from "../agents/sdkDefinitions";
 import type { AgentExecutionContext } from "../sdk/types";
 import type { ProjectContext } from "../context";
+import { createProjectContextFixture } from "../context";
 import mocks from "./mocks";
 import { outputContracts } from "../sdk/outputContractRegistry";
 
-const eggreenContext: ProjectContext = {
+const eggreenContext: ProjectContext = createProjectContextFixture({
   projectId: "proj_eggreen",
   businessName: "Eggreen",
   businessDescription: "Healthy breakfast restaurant",
-  industry: "Restaurant & Food",
-  businessStage: "planning",
-  country: "Jordan",
-  city: "Amman",
-  currency: "JOD",
-  currencySource: "country_default",
-  targetAudience: ["professionals"],
-  customerAgeRange: null,
-  customerType: "Individuals",
-  budgetRange: null,
-  budgetCurrency: null,
-  launchTimeline: "Within 3 months",
-  selectedGoals: ["Develop strategy"],
-  currentDate: "2026-07-28T00:00:00.000Z",
-  projectCreatedAt: "2026-07-28T00:00:00.000Z",
-  businessVertical: "restaurant_food_service",
-  businessVerticalConfidence: 0.9,
-  primaryRevenueModel: "transaction_sales",
-  secondaryRevenueModels: [],
-  salesChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
-  revenueComponents: ["transaction_sales", "delivery_fee", "add_on_products"],
-  revenueModelType: "transaction_sales",
-  revenueChannels: ["dine_in", "takeaway", "drive_thru", "delivery"],
-  businessModelCategory: "transaction_sales",
-  contextVersion: "1.0.0",
-};
+});
 
 function createExecutionContext(store: InMemoryArtifactStore, providerManager: ProviderManager): AgentExecutionContext {
   return {

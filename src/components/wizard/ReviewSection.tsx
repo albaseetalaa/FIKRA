@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { budgetRangeLabel, launchTimelineLabel } from "@/ai/context/budgetTimelineOptions";
 
 type WizardData = {
   idea: string;
@@ -15,6 +16,7 @@ type WizardData = {
   goals: string[];
   budget?: string;
   timeline?: string;
+  currency?: string;
 };
 
 export default function ReviewSection({ data, onEdit }: { data: WizardData; onEdit: (step: number) => void }) {
@@ -62,15 +64,25 @@ export default function ReviewSection({ data, onEdit }: { data: WizardData; onEd
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border bg-white/90 p-4 dark:bg-slate-900/60">
+          <h4 className="text-sm font-semibold">Currency</h4>
+          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{data.currency || "—"}</p>
+          <button onClick={() => onEdit(5)} className="mt-3 text-sm font-medium text-brand-600">
+            Edit
+          </button>
+        </div>
+        <div className="rounded-xl border bg-white/90 p-4 dark:bg-slate-900/60">
           <h4 className="text-sm font-semibold">Budget</h4>
-          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{data.budget || "—"}</p>
+          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
+            {budgetRangeLabel(data.budget)}
+            {data.currency ? ` (${data.currency})` : ""}
+          </p>
           <button onClick={() => onEdit(5)} className="mt-3 text-sm font-medium text-brand-600">
             Edit
           </button>
         </div>
         <div className="rounded-xl border bg-white/90 p-4 dark:bg-slate-900/60">
           <h4 className="text-sm font-semibold">Timeline</h4>
-          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{data.timeline || "—"}</p>
+          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{launchTimelineLabel(data.timeline)}</p>
           <button onClick={() => onEdit(5)} className="mt-3 text-sm font-medium text-brand-600">
             Edit
           </button>

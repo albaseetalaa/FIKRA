@@ -9,6 +9,23 @@ import {
   UNAVAILABLE_COMPETITOR_OUTCOME_REQUIRED_FIELDS,
 } from "../contracts/outputContracts";
 
+function formatLaunchTimeline(projectContext: ProjectContext): string {
+  const { launchTimeline, launchTimelineMode, launchTimelineDays } = projectContext;
+  if (!launchTimeline || !launchTimelineMode) {
+    return "unresolved";
+  }
+  if (launchTimelineMode === "asap") {
+    return "As soon as possible; no fixed day count";
+  }
+  if (launchTimelineMode === "flexible") {
+    return "Flexible; no fixed day count";
+  }
+  if (launchTimelineDays != null) {
+    return `${launchTimelineDays} days`;
+  }
+  return "unresolved";
+}
+
 export function buildAgentPrompt(params: {
   agentId: AgentID;
   projectContext: ProjectContext;
@@ -31,6 +48,12 @@ export function buildAgentPrompt(params: {
     `Country: ${projectContext.country}`,
     `City: ${projectContext.city ?? "unresolved"}`,
     `Currency: ${projectContext.currency ?? "unresolved"}`,
+    `Budget range: ${projectContext.budgetRange ?? "unresolved"}${
+      projectContext.budgetMin != null || projectContext.budgetMax != null
+        ? ` (min=${projectContext.budgetMin ?? "unbounded"}, max=${projectContext.budgetMax ?? "unbounded"} ${projectContext.currency ?? ""})`
+        : ""
+    }`,
+    `Launch timeline: ${projectContext.launchTimeline ?? "unresolved"} (${formatLaunchTimeline(projectContext)})`,
     `Business vertical: ${projectContext.businessVertical} (confidence=${projectContext.businessVerticalConfidence.toFixed(2)})`,
     `Primary revenue model: ${primaryRevenueModel}`,
     `Secondary revenue models: ${secondaryRevenueModels.join(", ") || "none"}`,

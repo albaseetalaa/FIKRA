@@ -2,6 +2,8 @@ import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/aut
 import { NextResponse } from "next/server";
 import { createProject } from "@/lib/project-workflow/service";
 import { executeCreateProjectRpc, ProjectCreationValidationError } from "@/lib/project-workflow/createProjectRpc";
+import { BUDGET_RANGE_OPTIONS, LAUNCH_TIMELINE_OPTIONS } from "@/ai/context/budgetTimelineOptions";
+import { isValidCurrencyCode } from "@/ai/context/currencyCatalog";
 
 export async function POST(req: Request) {
   try {
@@ -27,6 +29,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Please provide a more detailed project idea." }, { status: 400 });
     }
 
+    const currency = typeof body.currency === "string" ? body.currency.trim().toUpperCase() : "";
+    if (!currency) {
+      return NextResponse.json({ error: "Currency is required." }, { status: 400 });
+    }
+    if (!isValidCurrencyCode(currency)) {
+      return NextResponse.json({ error: "Currency must be a 3-letter code, such as JOD, USD, or SAR." }, { status: 400 });
+    }
+
+    const budget = typeof body.budget === "string" ? body.budget : "";
+    if (!budget) {
+      return NextResponse.json({ error: "Budget is required." }, { status: 400 });
+    }
+    if (!BUDGET_RANGE_OPTIONS.some((option) => option.id === budget)) {
+      return NextResponse.json({ error: "Please select a valid budget option." }, { status: 400 });
+    }
+
+    const timeline = typeof body.timeline === "string" ? body.timeline : "";
+    if (!timeline) {
+      return NextResponse.json({ error: "Launch timeline is required." }, { status: 400 });
+    }
+    if (!LAUNCH_TIMELINE_OPTIONS.some((option) => option.id === timeline)) {
+      return NextResponse.json({ error: "Please select a valid launch timeline option." }, { status: 400 });
+    }
+
     const project = await createProject(
       {
         idea,
@@ -39,9 +65,9 @@ export async function POST(req: Request) {
         ageRange: typeof body.ageRange === "string" ? body.ageRange : undefined,
         customerType: typeof body.customerType === "string" ? body.customerType : undefined,
         goals: Array.isArray(body.goals) ? body.goals : undefined,
-        budget: typeof body.budget === "string" ? body.budget : undefined,
-        timeline: typeof body.timeline === "string" ? body.timeline : undefined,
-        currency: typeof body.currency === "string" ? body.currency : undefined,
+        budget: budget || undefined,
+        timeline: timeline || undefined,
+        currency,
       },
       {
         execute: executeCreateProjectRpc,
