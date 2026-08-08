@@ -204,11 +204,30 @@ Active states for `primary`, `secondary`, and `ghost` are now authoritatively de
 
 #### 5.4.1 Shared focus state
 
-Focus styling is identical across all four action variants:
+Focus styling is identical across all four action variants and is defined by two binding semantic non-color values, alongside the existing `action.disabled.opacity` contract (Section 5.4.2):
 
-- Focus styling uses `color.border.focus` (see Section 5.3), never a variant-specific focus color.
-- Focus is applied through `:focus-visible`, not on every pointer-driven focus event.
-- Focus does not replace a variant's background, foreground, or border mapping — it is an additional ring, layered on top of whichever state (default, hover, or active) the control is already in.
+- `focus.ring.width = 2px` (future CSS custom property: `--focus-ring-width`)
+- `focus.ring.offset = 2px` (future CSS custom property: `--focus-ring-offset`)
+
+Button focus is:
+
+- Expressed through `:focus-visible` only, never on every pointer-driven focus event.
+- An **external** outline, drawn outside the component's visible boundary — not inset, and not overlapping the component's own fill.
+- Sized by `focus.ring.width` and separated from the component by `focus.ring.offset`.
+- Colored by `color.border.focus` (see Section 5.3), never a variant-specific focus color.
+- Never a replacement for a variant's background, foreground, or border mapping — it is an additional, external ring, layered outside whichever state (default, hover, or active) the control is already in.
+- Not transitioned and not animated via `box-shadow` — consistent with `Animations.md` §6, which restricts animation to `transform`/`opacity` and explicitly prohibits animating `box-shadow`.
+
+**Accessibility boundary.** Because the indicator is explicitly external and separated from the component by `focus.ring.offset`, its required adjacent-color contrast is evaluated against the surface the Button appears on, not against every Button fill the ring happens to sit near. `color.border.focus` (`#3A63F5`) is verified below against every surface currently authorized to host a Button:
+
+| Adjacent surface        | Value                                              |    Ratio | Requirement | Result |
+| ----------------------- | -------------------------------------------------- | -------: | ----------- | ------ |
+| `color.surface.canvas`  | `#FAFAFC`                                          | `4.70:1` | `3:1`       | Pass   |
+| `color.surface.subtle`  | `#F5F6FA`                                          | `4.54:1` | `3:1`       | Pass   |
+| `color.surface.raised`  | `#FAFAFC` (identical to `canvas`, see Section 5.1) | `4.70:1` | `3:1`       | Pass   |
+| `color.surface.inverse` | `#0F0F1A`                                          | `3.88:1` | `3:1`       | Pass   |
+
+`color.surface.overlay` is not tested here: it is a translucent scrim rendered behind other content (Section 5.1), not a surface a Button's own edge is placed directly against, so it is not an "adjacent surface" in the sense this contrast rule governs.
 
 #### 5.4.2 Disabled treatment
 

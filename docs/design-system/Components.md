@@ -112,10 +112,14 @@ These are approved temporary framework conventions, not a newly invented public 
 
 ### 6.4 Focus
 
+Full binding definition: `Colors.md` §5.4.1. Summary:
+
 - Focus is expressed only through `:focus-visible`, never on every pointer-driven focus event.
-- A `2px` focus ring uses `color.border.focus` (`Colors.md` §5.3).
+- The focus ring is an **external** outline outside the component's visible boundary — not inset — sized by `focus.ring.width` (`2px`) and separated from the component by `focus.ring.offset` (`2px`), colored by `color.border.focus`.
 - No variant-specific focus color exists — focus styling is identical across primary, secondary, ghost, and destructive.
-- The accessible focus indicator must remain visibly distinct on both the standard light surfaces and the inverse surface (verified in `Colors.md` §6).
+- Focus never replaces a variant's background, foreground, or border mapping.
+- Focus is not transitioned and is not animated via `box-shadow`.
+- Because the ring is external and offset, its required adjacent-color contrast is against the surface the Button appears on, not against every Button fill — verified for every currently authorized surface in `Colors.md` §5.4.1.
 
 ### 6.5 Disabled
 
