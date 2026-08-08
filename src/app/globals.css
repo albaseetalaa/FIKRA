@@ -60,6 +60,10 @@
    Tailwind theme namespace: the :root primitives above and the existing
    --color-brand-* scale. */
 @theme inline {
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
   --color-surface-canvas: var(--primitive-neutral-0);
   --color-surface-subtle: var(--primitive-neutral-50);
   --color-surface-raised: var(--primitive-neutral-0);
