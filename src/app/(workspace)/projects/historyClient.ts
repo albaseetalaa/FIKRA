@@ -1,5 +1,5 @@
-import type { ProjectHistoryItem } from "../../lib/persistence/types";
-import { parseProjectHistoryResponse } from "../../lib/project-workflow/historyContract";
+import type { ProjectHistoryItem } from "@/lib/persistence/types";
+import { parseProjectHistoryResponse } from "@/lib/project-workflow/historyContract";
 
 export type ProjectHistoryViewState = {
   items: ProjectHistoryItem[];
