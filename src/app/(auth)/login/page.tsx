@@ -2,11 +2,11 @@ import React from "react";
 import { redirect } from "next/navigation";
 
 import { getOptionalUser } from "@/lib/auth/getOptionalUser";
-import { sanitizeNextPath } from "../../lib/auth/nextPath";
+import { sanitizeNextPath } from "@/lib/auth/nextPath";
 
-import SignupForm from "./SignupForm";
+import LoginForm from "./LoginForm";
 
-export default async function SignupPage({
+export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ next?: string | string[] }>;
@@ -19,5 +19,5 @@ export default async function SignupPage({
     redirect(nextPath);
   }
 
-  return <SignupForm nextPath={nextPath} />;
+  return <LoginForm nextPath={nextPath} />;
 }
