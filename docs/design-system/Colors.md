@@ -234,14 +234,14 @@ Button focus is:
 A single shared semantic value governs disabled styling across all four variants:
 
 - `action.disabled.opacity = 0.5`
-- Future CSS custom property: `--opacity-action-disabled`
+- Future CSS custom property: `--action-disabled-opacity`
 
 This is a semantic **opacity** value, not a color token — it is tracked separately from, and does not count toward, the 39 semantic color tokens declared in Section 3. Disabled treatment:
 
 - Retains the base variant's own background, foreground, and border color mapping (no separate disabled color token exists, or is needed, per variant).
 - Applies `action.disabled.opacity` on top of that base mapping.
 - Suppresses hover and active treatment — a disabled control never transitions to its hover or active fill.
-- Uses the native HTML `disabled` attribute as the effective mechanism, not a visual-only convention.
+- For explicit `disabled`, uses the native HTML `disabled` attribute as the effective mechanism (`Components.md` §6.5), not a visual-only convention.
 - Is non-interactive.
 - Uses a `not-allowed` cursor wherever a `pointer` cursor would otherwise apply.
 - Is not animated.
@@ -250,7 +250,9 @@ No separate disabled color token is created for `primary`, `secondary`, `ghost`,
 
 #### 5.4.3 Loading treatment
 
-Loading uses exactly the same visual color and opacity treatment as disabled (Section 5.4.2). It does not introduce a new color token, a distinct loading color, a spinner, a loading-icon token, or a loading animation.
+Loading uses exactly the same visual color and opacity treatment as disabled (Section 5.4.2) — the same background, foreground, border mapping, and `action.disabled.opacity`. It does not introduce a new color token, a distinct loading color, a spinner, a loading-icon token, or a loading animation.
+
+This shared visual treatment is a color-and-opacity mapping only. Loading's interaction mechanism does not reuse explicit disabled's native `disabled` attribute and is governed separately by `Components.md` §6.6.
 
 ### 5.5 Status — unchanged
 
@@ -272,40 +274,40 @@ Loading uses exactly the same visual color and opacity treatment as disabled (Se
 
 Every foreground/background and boundary pair below is calculated from the literal values in Sections 4–5 using the standard WCAG relative-luminance contrast formula.
 
-| Pair                                                                      |     Ratio | Requirement                                        | Result               |
-| ------------------------------------------------------------------------- | --------: | -------------------------------------------------- | -------------------- |
-| Text primary on canvas                                                    | `18.25:1` | `4.5:1`                                            | Pass                 |
-| Text secondary on canvas                                                  |  `9.89:1` | `4.5:1`                                            | Pass                 |
-| Text muted on canvas                                                      |  `7.25:1` | `4.5:1`                                            | Pass                 |
-| Text inverse on inverse surface                                           | `18.25:1` | `4.5:1`                                            | Pass                 |
-| Text disabled on canvas                                                   |  `2.46:1` | Not applicable — disabled content, see Section 5.2 | Documented exception |
-| Link on canvas                                                            |  `6.68:1` | `4.5:1`                                            | Pass                 |
-| Primary-action foreground on background                                   |  `9.02:1` | `4.5:1`                                            | Pass                 |
-| Primary-action foreground on hover background                             | `11.10:1` | `4.5:1`                                            | Pass                 |
-| Primary-action foreground on active background                            | `12.76:1` | `4.5:1`                                            | Pass                 |
-| Secondary-action foreground on background                                 | `18.25:1` | `4.5:1`                                            | Pass                 |
-| Secondary-action foreground on hover background                           | `16.39:1` | `4.5:1`                                            | Pass                 |
-| Secondary-action foreground on active background                          | `14.41:1` | `4.5:1`                                            | Pass                 |
-| Secondary-action outlined boundary (`border.strong` vs. canvas)           |  `4.64:1` | `3:1`                                              | Pass                 |
-| Secondary-action outlined boundary (`border.strong` vs. `surface.subtle`) |  `4.48:1` | `3:1`                                              | Pass                 |
-| Ghost-action foreground on canvas                                         |  `6.68:1` | `4.5:1`                                            | Pass                 |
-| Ghost-action foreground on hover background                               |  `6.00:1` | `4.5:1`                                            | Pass                 |
-| Ghost-action foreground on active background                              |  `5.27:1` | `4.5:1`                                            | Pass                 |
-| Destructive-action foreground on background                               |  `4.63:1` | `4.5:1`                                            | Pass                 |
-| Destructive-action foreground on hover background                         |  `6.21:1` | `4.5:1`                                            | Pass                 |
-| Destructive-action foreground on active background                        |  `7.97:1` | `4.5:1`                                            | Pass                 |
-| Focus indicator vs. canvas                                                |  `4.70:1` | `3:1`                                              | Pass                 |
-| Focus indicator vs. inverse surface                                       |  `3.88:1` | `3:1`                                              | Pass                 |
-| Status success foreground/background                                      |  `6.81:1` | `4.5:1`                                            | Pass                 |
-| Status warning foreground/background                                      |  `6.84:1` | `4.5:1`                                            | Pass                 |
-| Status error foreground/background                                        |  `7.60:1` | `4.5:1`                                            | Pass                 |
-| Status info foreground/background                                         |  `8.01:1` | `4.5:1`                                            | Pass                 |
+| Pair                                                                       |     Ratio | Requirement                                        | Result               |
+| -------------------------------------------------------------------------- | --------: | -------------------------------------------------- | -------------------- |
+| Text primary on canvas                                                     | `18.25:1` | `4.5:1`                                            | Pass                 |
+| Text secondary on canvas                                                   |  `9.89:1` | `4.5:1`                                            | Pass                 |
+| Text muted on canvas                                                       |  `7.25:1` | `4.5:1`                                            | Pass                 |
+| Text inverse on inverse surface                                            | `18.25:1` | `4.5:1`                                            | Pass                 |
+| Text disabled on canvas                                                    |  `2.46:1` | Not applicable — disabled content, see Section 5.2 | Documented exception |
+| Link on canvas                                                             |  `6.68:1` | `4.5:1`                                            | Pass                 |
+| Primary-action foreground on background                                    |  `9.02:1` | `4.5:1`                                            | Pass                 |
+| Primary-action foreground on hover background                              | `11.10:1` | `4.5:1`                                            | Pass                 |
+| Primary-action foreground on active background                             | `12.76:1` | `4.5:1`                                            | Pass                 |
+| Secondary-action foreground on background                                  | `18.25:1` | `4.5:1`                                            | Pass                 |
+| Secondary-action foreground on hover background                            | `16.39:1` | `4.5:1`                                            | Pass                 |
+| Secondary-action foreground on active background                           | `14.41:1` | `4.5:1`                                            | Pass                 |
+| Secondary-action outlined boundary (`border.strong` vs. canvas)            |  `4.64:1` | `3:1`                                              | Pass                 |
+| Secondary-action outlined boundary (`border.strong` vs. `surface.subtle`)  |  `4.48:1` | `3:1`                                              | Pass                 |
+| Secondary-action outlined boundary (`border.strong` vs. `surface.inverse`) |  `3.94:1` | `3:1`                                              | Pass                 |
+| Ghost-action foreground on canvas                                          |  `6.68:1` | `4.5:1`                                            | Pass                 |
+| Ghost-action foreground on hover background                                |  `6.00:1` | `4.5:1`                                            | Pass                 |
+| Ghost-action foreground on active background                               |  `5.27:1` | `4.5:1`                                            | Pass                 |
+| Destructive-action foreground on background                                |  `4.63:1` | `4.5:1`                                            | Pass                 |
+| Destructive-action foreground on hover background                          |  `6.21:1` | `4.5:1`                                            | Pass                 |
+| Destructive-action foreground on active background                         |  `7.97:1` | `4.5:1`                                            | Pass                 |
+| Status success foreground/background                                       |  `6.81:1` | `4.5:1`                                            | Pass                 |
+| Status warning foreground/background                                       |  `6.84:1` | `4.5:1`                                            | Pass                 |
+| Status error foreground/background                                         |  `7.60:1` | `4.5:1`                                            | Pass                 |
+| Status info foreground/background                                          |  `8.01:1` | `4.5:1`                                            | Pass                 |
 
 - Normal text: minimum `4.5:1` contrast.
 - Large text and essential non-text UI: minimum `3:1` where WCAG permits.
 - Focus indicators and meaningful state boundaries: minimum `3:1` against adjacent colors.
 - Statuses must pair color with text, iconography, or another non-color cue.
 - Every semantic foreground/background pair must be tested in its real component context in addition to this token-level verification.
+- Button focus-indicator contrast against every currently authorized adjacent surface is authoritatively verified in Section 5.4.1, not duplicated in this table.
 
 Generated customer brand content is not application chrome and may use the customer's palette. Studios must still analyze that content, flag accessibility failures, and avoid allowing customer colors to leak into FIKRA navigation or controls.
 

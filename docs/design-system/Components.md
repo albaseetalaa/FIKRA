@@ -123,19 +123,28 @@ Full binding definition: `Colors.md` §5.4.1. Summary:
 
 ### 6.5 Disabled
 
-- `disabled` is the effective native disabled state, set via the native HTML `disabled` attribute.
+Explicit `disabled` is the only Button state that uses native disabled semantics:
+
+- `disabled` is set via the native HTML `disabled` attribute.
+- The native `disabled` attribute makes the Button non-interactive and removes it from sequential keyboard focus, per native browser behavior.
+- Native disabled semantics remain recognizable by assistive technology on their own; no redundant `aria-disabled` attribute is required for this explicit native disabled state.
 - Disabled suppresses hover and active styling for the active variant.
 - Disabled uses `action.disabled.opacity` (`Colors.md` §5.4.2).
-- Disabled remains screen-reader recognizable through native semantics alone — no additional ARIA attribute is required for the disabled state itself.
 - No motion is applied when entering or leaving the disabled state.
 
 ### 6.6 Loading
 
-The established repository convention (already used identically by `LoginForm`, `SignupForm`, and `WizardNavigation`) is made binding:
+`loading` is a distinct pending state from explicit `disabled` (Section 6.5) and does not reuse its interaction mechanism. This binding contract corrects the native-`disabled`-based pattern currently used by `LoginForm`, `SignupForm`, and `WizardNavigation` (each sets the native `disabled` attribute plus `aria-busy` on their pending/submitting state); migrating those call sites to this contract is a later, separate implementation task and is out of scope for this documentation revision.
 
-- `loading={true}` forces effective disabled.
-- The native button receives `aria-busy="true"`.
+- `loading={true}` alone does not set the native HTML `disabled` attribute on an otherwise enabled Button.
+- `loading={true}` sets `aria-disabled="true"` and `aria-busy="true"`.
+- The Button remains in the accessibility tree and in sequential keyboard focus order while loading.
+- If the Button already held focus when it initiated the operation, loading must preserve that focus.
+- `aria-disabled` alone does not suppress native browser interaction. While loading, the Button foundation must programmatically suppress every user activation path: pointer activation, `Enter`/`Space` key activation, the caller's `onClick`, and default form-submit activation.
+- If `disabled={true}` and `loading={true}` are both set, the native `disabled` attribute remains authoritative for interaction and focus; `aria-busy` continues to reflect the pending operation.
+- Visual color and opacity treatment during loading is identical to disabled (`Colors.md` §5.4.2–§5.4.3); only the interaction mechanism above differs.
 - The caller owns the localized, visible label change (for example, changing "Log in" to "Signing in…"); the Button does not invent or supply loading copy.
+- `aria-busy` is not a guaranteed loading announcement on its own. A consumer using `loading` must provide a stable, localized status announcement via `role="status"` (or equivalent `aria-live="polite"` treatment); the status region must already exist in the DOM before the loading text is inserted so the update is reliably announced. Consumer migration to this contract must preserve or add this announcement.
 - The Button does not render a spinner.
 - The Button does not expose a loading-indicator slot or prop.
 - Loading introduces no motion and no icon dependency, consistent with UI-05 remaining pending.
