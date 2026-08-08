@@ -2,8 +2,7 @@
 
 @theme {
   --font-sans:
-    var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
-    sans-serif;
+    var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 
   --color-brand-50: #eef4ff;
@@ -20,6 +19,86 @@
 
 :root {
   color-scheme: light;
+
+  /* Primitive palette tokens — provisional v1 values (docs/design-system/Colors.md §4.2–§4.3).
+     Kept outside the Tailwind theme namespace on purpose: components must
+     never reference these directly, only through the semantic layer below. */
+  --primitive-neutral-0: #fafafc;
+  --primitive-neutral-50: #f5f6fa;
+  --primitive-neutral-100: #eceef3;
+  --primitive-neutral-200: #dde0e8;
+  --primitive-neutral-300: #c5cad5;
+  --primitive-neutral-400: #9aa2b1;
+  --primitive-neutral-500: #6b7280;
+  --primitive-neutral-600: #4b5563;
+  --primitive-neutral-700: #374151;
+  --primitive-neutral-800: #252a35;
+  --primitive-neutral-900: #191b25;
+  --primitive-neutral-950: #0f0f1a;
+
+  --primitive-accent-500: #e94560;
+
+  --primitive-green-50: #f0fdf4;
+  --primitive-green-600: #16a34a;
+  --primitive-green-800: #166534;
+
+  --primitive-amber-50: #fffbeb;
+  --primitive-amber-800: #92400e;
+
+  --primitive-red-50: #fef2f2;
+  --primitive-red-600: #dc2626;
+  --primitive-red-800: #991b1b;
+
+  --primitive-blue-50: #eff6ff;
+  --primitive-blue-800: #1e40af;
+}
+
+/* Semantic color tokens — provisional v1 (docs/design-system/Colors.md §5).
+   Components must consume only these aliases, never --primitive-* or
+   --color-brand-* directly. @theme inline is required (not plain @theme)
+   because these values reference custom properties declared outside the
+   Tailwind theme namespace: the :root primitives above and the existing
+   --color-brand-* scale. */
+@theme inline {
+  --color-surface-canvas: var(--primitive-neutral-0);
+  --color-surface-subtle: var(--primitive-neutral-50);
+  --color-surface-raised: var(--primitive-neutral-0);
+  --color-surface-inverse: var(--primitive-neutral-950);
+  --color-surface-overlay: color-mix(
+    in srgb,
+    var(--primitive-neutral-950) 56%,
+    transparent
+  );
+
+  --color-text-primary: var(--primitive-neutral-950);
+  --color-text-secondary: var(--primitive-neutral-700);
+  --color-text-muted: var(--primitive-neutral-600);
+  --color-text-inverse: var(--primitive-neutral-0);
+  --color-text-disabled: var(--primitive-neutral-400);
+  --color-text-link: var(--color-brand-600);
+
+  --color-border-default: var(--primitive-neutral-300);
+  --color-border-strong: var(--primitive-neutral-500);
+  --color-border-focus: var(--color-brand-500);
+  --color-border-disabled: var(--primitive-neutral-200);
+
+  --color-action-primary-background: var(--color-brand-700);
+  --color-action-primary-foreground: var(--primitive-neutral-0);
+  --color-action-primary-hover: var(--color-brand-800);
+  --color-action-secondary-background: var(--primitive-neutral-0);
+  --color-action-secondary-foreground: var(--primitive-neutral-950);
+  --color-action-secondary-hover: var(--primitive-neutral-100);
+  --color-action-destructive-background: var(--primitive-red-600);
+  --color-action-destructive-foreground: var(--primitive-neutral-0);
+
+  --color-status-success-background: var(--primitive-green-50);
+  --color-status-success-foreground: var(--primitive-green-800);
+  --color-status-warning-background: var(--primitive-amber-50);
+  --color-status-warning-foreground: var(--primitive-amber-800);
+  --color-status-error-background: var(--primitive-red-50);
+  --color-status-error-foreground: var(--primitive-red-800);
+  --color-status-info-background: var(--primitive-blue-50);
+  --color-status-info-foreground: var(--primitive-blue-800);
 }
 
 html {
@@ -32,7 +111,7 @@ body {
 }
 
 body {
-  @apply bg-slate-50 text-slate-950 font-sans antialiased;
+  @apply bg-slate-50 font-sans text-slate-950 antialiased;
 }
 
 ::selection {
