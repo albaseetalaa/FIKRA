@@ -47,10 +47,17 @@
 
   --primitive-red-50: #fef2f2;
   --primitive-red-600: #dc2626;
+  --primitive-red-700: #b91c1c;
   --primitive-red-800: #991b1b;
 
   --primitive-blue-50: #eff6ff;
   --primitive-blue-800: #1e40af;
+
+  /* Shared semantic non-color component properties — provisional v1
+     (docs/design-system/Colors.md §5.4.1–§5.4.2). */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --action-disabled-opacity: 0.5;
 }
 
 /* Semantic color tokens — provisional v1 (docs/design-system/Colors.md §5).
@@ -89,11 +96,19 @@
   --color-action-primary-background: var(--color-brand-700);
   --color-action-primary-foreground: var(--primitive-neutral-0);
   --color-action-primary-hover: var(--color-brand-800);
+  --color-action-primary-active: var(--color-brand-900);
   --color-action-secondary-background: var(--primitive-neutral-0);
   --color-action-secondary-foreground: var(--primitive-neutral-950);
   --color-action-secondary-hover: var(--primitive-neutral-100);
+  --color-action-secondary-active: var(--primitive-neutral-200);
+  --color-action-ghost-background: transparent;
+  --color-action-ghost-foreground: var(--color-brand-600);
+  --color-action-ghost-hover: var(--primitive-neutral-100);
+  --color-action-ghost-active: var(--primitive-neutral-200);
   --color-action-destructive-background: var(--primitive-red-600);
   --color-action-destructive-foreground: var(--primitive-neutral-0);
+  --color-action-destructive-hover: var(--primitive-red-700);
+  --color-action-destructive-active: var(--primitive-red-800);
 
   --color-status-success-background: var(--primitive-green-50);
   --color-status-success-foreground: var(--primitive-green-800);
