@@ -2,6 +2,10 @@
 
 import React from "react";
 
+import { Button } from "@/components/ui/button";
+
+const CREATE_PENDING_LABEL = "Creating...";
+
 export default function WizardNavigation({
   step,
   total,
@@ -24,44 +28,28 @@ export default function WizardNavigation({
   return (
     <div className="mt-6 flex items-center justify-between gap-4">
       <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          disabled={submitting}
-          className="rounded-full px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white/50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        <Button variant="ghost" onClick={onBack} disabled={submitting}>
           Back
-        </button>
-        <button
-          onClick={onSaveDraft}
-          disabled={submitting}
-          className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        </Button>
+        <Button variant="secondary" onClick={onSaveDraft} disabled={submitting}>
           Save Draft
-        </button>
+        </Button>
       </div>
 
       <div className="flex items-center gap-3">
         {step < total ? (
-          <button
-            onClick={onContinue}
-            disabled={!canContinue}
-            className={`rounded-full px-6 py-3 text-sm font-semibold text-white ${
-              canContinue ? "bg-brand-700 hover:bg-brand-800" : "bg-white/8 cursor-not-allowed"
-            }`}
-          >
+          <Button onClick={onContinue} disabled={!canContinue}>
             Continue
-          </button>
+          </Button>
         ) : (
-          <button
-            onClick={onSubmit}
-            disabled={submitting}
-            aria-busy={submitting}
-            className={`rounded-full px-6 py-3 text-sm font-semibold text-white ${
-              submitting ? "cursor-not-allowed bg-white/8" : "bg-brand-700 hover:bg-brand-800"
-            }`}
-          >
-            {submitting ? "Creating..." : "Create My Project"}
-          </button>
+          <>
+            <span role="status" className="sr-only">
+              {submitting ? CREATE_PENDING_LABEL : ""}
+            </span>
+            <Button onClick={onSubmit} loading={submitting}>
+              {submitting ? CREATE_PENDING_LABEL : "Create My Project"}
+            </Button>
+          </>
         )}
       </div>
     </div>
