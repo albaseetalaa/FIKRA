@@ -3,9 +3,11 @@
 import Link from "next/link";
 import React, { useActionState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { signInAction, type AuthActionState } from "@/lib/auth/actions";
 
 const initialState: AuthActionState = { status: "idle", error: null };
+const LOGIN_PENDING_LABEL = "Signing in...";
 
 export default function LoginForm({ nextPath }: { nextPath: string }) {
   const signInWithNext = signInAction.bind(null, nextPath);
@@ -48,16 +50,12 @@ export default function LoginForm({ nextPath }: { nextPath: string }) {
             </p>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={isPending}
-            aria-busy={isPending}
-            className={`w-full rounded-full px-6 py-3 text-sm font-semibold text-white ${
-              isPending ? "cursor-not-allowed bg-white/8" : "bg-brand-700 hover:bg-brand-800"
-            }`}
-          >
-            {isPending ? "Signing in..." : "Log in"}
-          </button>
+          <span role="status" className="sr-only">
+            {isPending ? LOGIN_PENDING_LABEL : ""}
+          </span>
+          <Button type="submit" loading={isPending} className="w-full">
+            {isPending ? LOGIN_PENDING_LABEL : "Log in"}
+          </Button>
         </form>
 
         <p className="mt-6 text-sm text-slate-600 dark:text-slate-400">

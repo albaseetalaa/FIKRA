@@ -3,9 +3,11 @@
 import Link from "next/link";
 import React, { useActionState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { signUpAction, type AuthActionState } from "@/lib/auth/actions";
 
 const initialState: AuthActionState = { status: "idle", error: null };
+const SIGNUP_PENDING_LABEL = "Creating account...";
 
 export default function SignupForm({ nextPath }: { nextPath: string }) {
   const signUpWithNext = signUpAction.bind(null, nextPath);
@@ -81,16 +83,12 @@ export default function SignupForm({ nextPath }: { nextPath: string }) {
             </p>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={isPending}
-            aria-busy={isPending}
-            className={`w-full rounded-full px-6 py-3 text-sm font-semibold text-white ${
-              isPending ? "cursor-not-allowed bg-white/8" : "bg-brand-700 hover:bg-brand-800"
-            }`}
-          >
-            {isPending ? "Creating account..." : "Sign up"}
-          </button>
+          <span role="status" className="sr-only">
+            {isPending ? SIGNUP_PENDING_LABEL : ""}
+          </span>
+          <Button type="submit" loading={isPending} className="w-full">
+            {isPending ? SIGNUP_PENDING_LABEL : "Sign up"}
+          </Button>
         </form>
 
         <p className="mt-6 text-sm text-slate-600 dark:text-slate-400">
