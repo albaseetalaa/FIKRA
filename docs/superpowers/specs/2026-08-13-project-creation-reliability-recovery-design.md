@@ -1,6 +1,6 @@
 # Project Creation Reliability & Recovery — Design
 
-**Status:** Approved by owner 2026-08-13
+**Status:** Approved by owner 2026-08-13, with three adjustments incorporated below
 **Branch:** `feat/project-creation-reliability-recovery` (from `master`)
 **Batch:** Phase 1 of "Project Creation & Intelligent Intake" — Problems 1–3 only
 
@@ -94,26 +94,58 @@ touched.
 Replace the current plain-text error paragraph with a stateful recovery panel,
 shown only when create succeeded but start failed, using the existing `Button`
 component and no ad-hoc styling:
-- **Retry Start** (primary) — re-invokes `POST /api/projects/start` with the
+- **Retry Start** (primary) — calls a dedicated start/retry path with the
   already-created `projectId`; uses `Button`'s existing `loading` prop.
+  **Invariant (required):** Retry Start must be strictly start-only. It must
+  never re-invoke the original create submission and must never call
+  `POST /api/projects/create` under any circumstance, including double-click or
+  repeated-failure retries. The binding rule for this whole flow is: **one user
+  creation → one `projectId` → every retry operates on that same project.** The
+  wizard's retry handler calls only the start endpoint directly with the stored
+  `projectId`; it does not re-run the create step of the submission flow.
 - **Open Project** (secondary) — links to `/workspace/demo?projectId=...`, the
   same destination the existing `/projects` history list already uses for its
   "Open in Workspace" action, so behavior stays consistent across both entry
   points.
-- **Go to My Projects** (ghost) — links to `/projects`.
-- Explicit copy confirming the project is saved, so the user never believes
-  creation itself failed.
+- **My Projects** (ghost) — links to `/projects`.
+- Explicit copy confirming the project is safely saved, so the user never
+  believes creation itself failed.
 
 Distinguish this from a genuine **create failure** (no project persisted — a
 simpler error state with no recovery actions, since there is nothing to recover).
 
-`header.tsx`'s marketing nav is **deliberately not touched**. It has no in-flight
-changes on any other branch (verified via `git log --all -- src/components/layout/header.tsx`),
-but the recovery panel alone fully resolves the reported bug, so touching a file
-flagged for future brand-identity work is unnecessary risk for no benefit. The
-incidental `</p>` typo at `CreateProjectWizard.tsx:243` (noticed during the audit)
-is fixed as part of this same edit, since it sits directly in this file's blast
-radius.
+The incidental `</p>` typo at `CreateProjectWizard.tsx:243` (noticed during the
+audit) is fixed as part of this same edit, since it sits directly in this file's
+blast radius.
+
+### My Projects discoverability outside the failure state
+The recovery panel and the in-workspace `TopNav` are not sufficient on their own:
+a user who has created projects must be able to reach `/projects` through a
+normal, always-present route, not only after an error or once already inside the
+workspace shell.
+
+**Constraint found during the audit:** there is no existing authenticated
+navigation surface to extend cleanly for this. The only two candidates are
+`header.tsx` (marketing-only chrome, explicitly off-limits — see below) and
+`TopNav`/`WorkspaceLayout` (dark, workspace-specific, project-context-bound
+styling built with raw Tailwind classes rather than the semantic design-system
+tokens, and only rendered inside `workspace/demo/page.tsx`, not group-wide).
+Neither is a clean fit for the onboarding surface, where this problem actually
+occurs (a user mid-wizard, e.g. on a phone, has no chrome at all today — the
+`(onboarding)` and `(workspace)` route groups have no `layout.tsx` of their own,
+unlike `(marketing)`, which is the only group wrapped in `Header`/`Footer`).
+
+**Chosen smallest integration point:** a new `src/app/(onboarding)/layout.tsx`,
+scoped only to the onboarding route group (`create-project` and
+`create-project/processing`), rendering a minimal, semantic-token-based nav strip
+with a single **My Projects** link — shown only when a user session exists
+(reusing the existing `getOptionalUser()` pattern already used in `header.tsx`,
+not a new auth mechanism). This is additive, isolated from `header.tsx`, isolated
+from `TopNav`, uses the project's own semantic color tokens (unlike the legacy raw
+Tailwind classes in both of those existing components, which are not modified or
+extended), and automatically covers every current and future page in the
+onboarding group without per-page wiring. `header.tsx` remains untouched, per the
+original isolation requirement.
 
 ## Data flow
 
@@ -125,11 +157,15 @@ Wizard submit
       → on failure: wizard transitions to a local "created, not started" state
           holding the projectId (never lost) and the classified failure reason
           → recovery panel renders
-          → "Retry Start" re-calls the same start endpoint with the same
-            projectId (idempotent — reuses the existing queued run)
+          → "Retry Start" calls only the start endpoint with the same projectId
+            (idempotent — reuses the existing queued run; never calls create)
           → repeated failure keeps the panel visible; nothing is silently retried
             or hidden
 ```
+
+Independently of this failure path, `/projects` is reachable at any time through
+the new onboarding-surface nav link described above — not only after a start
+failure.
 
 ## Testing plan
 
@@ -148,6 +184,12 @@ Wizard submit
 - A failed start does not delete or mutate the created project row.
 - Retrying start after a failure reuses the existing queued run — no duplicate
   run or project is created.
+- **Repeated Retry Start actions on the same project cannot create another
+  project or another workflow run.** This test simulates multiple sequential
+  (and, where practical, overlapping) retry calls for one `projectId` and asserts
+  exactly one project and one run exist throughout — proving the "one creation →
+  one projectId → retries operate on that same project" invariant directly,
+  not just as a side effect of the "no duplicate run" case above.
 - An unauthorized user cannot start or retry another user's project (extends
   existing tenant-ownership tests; does not weaken them).
 
@@ -156,14 +198,25 @@ Wizard submit
   on a plain create failure.
 - All three actions use the existing `Button` component with its established
   variant/loading/accessibility contract — no new button styling is introduced.
-- "Retry Start" calls the start endpoint with the correct, already-created
-  `projectId`.
+- "Retry Start" calls only the start endpoint with the correct, already-created
+  `projectId`, and a test asserts it never issues a request to
+  `/api/projects/create`.
+
+**My Projects discoverability**
+- The new onboarding-surface nav renders a "My Projects" link for an
+  authenticated user and renders nothing (no broken/empty chrome) for an
+  unauthenticated one, mirroring the existing `getOptionalUser()`-gated pattern
+  in `header.tsx`.
+- The link is present on the core wizard screen and the processing screen (both
+  members of the `(onboarding)` route group), independent of any error state.
 
 ## Explicit non-goals for this PR
 
 - No adaptive AI intake, structured brief, provenance model, or Brand Memory work
   (all deferred to Phase 2, pending the two canonical documents).
-- No changes to `header.tsx` or the marketing nav.
+- No changes to `header.tsx` or the marketing nav — the onboarding-surface "My
+  Projects" link is a new, isolated file (`(onboarding)/layout.tsx`), not a
+  modification of `header.tsx` or `TopNav`.
 - No relaxation of Preview's persistence strictness.
 - No new dependencies.
 - No changes to Production.
