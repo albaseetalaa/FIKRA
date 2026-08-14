@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getPersistenceContainer,
+  PersistenceConfigurationError,
   resetPersistenceContainerForTests,
 } from "./setup";
 
@@ -57,5 +58,23 @@ describe("persistence provider safety", () => {
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
 
     expect(getPersistenceContainer().provider).toBe("supabase");
+  });
+
+  it("throws PersistenceConfigurationError (not a generic Error) when production is missing AI_PERSISTENCE_PROVIDER", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AI_PERSISTENCE_PROVIDER", "");
+    vi.stubEnv("SUPABASE_URL", "");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+
+    expect(() => getPersistenceContainer()).toThrow(PersistenceConfigurationError);
+  });
+
+  it("throws PersistenceConfigurationError (not a generic Error) when Supabase credentials are missing", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("AI_PERSISTENCE_PROVIDER", "supabase");
+    vi.stubEnv("SUPABASE_URL", "");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+
+    expect(() => getPersistenceContainer()).toThrow(PersistenceConfigurationError);
   });
 });
