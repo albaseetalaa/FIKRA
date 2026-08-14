@@ -771,15 +771,6 @@ async function readErrorMessage(res: Response): Promise<string | undefined> {
   }
 }
 
-async function readErrorCode(res: Response): Promise<string | undefined> {
-  try {
-    const payload = (await res.json()) as { code?: string };
-    return payload.code;
-  } catch {
-    return undefined;
-  }
-}
-
 async function callStart(projectId: string, fetchImpl: typeof fetch): Promise<Response> {
   return fetchImpl("/api/projects/start", {
     method: "POST",
@@ -926,13 +917,16 @@ async function performRetryStart(projectId: string, fetchImpl: typeof fetch): Pr
     }
 
     if (res.status === 503) {
-      const code = await readErrorCode(res);
+      // A single res.json() read, reused for both fields — Response.json()
+      // can only be consumed once on a real fetch Response, so this must
+      // not call two separate helpers that each read the body.
+      const payload = await res
+        .json()
+        .catch(() => undefined as { error?: string; code?: string } | undefined);
       return {
         ok: false,
-        kind: code === "persistence_unavailable" ? "unavailable" : "server",
-        message:
-          (await readErrorMessage(res)) ??
-          "The AI workflow isn't ready to start yet. Please try again shortly.",
+        kind: payload?.code === "persistence_unavailable" ? "unavailable" : "server",
+        message: payload?.error ?? "The AI workflow isn't ready to start yet. Please try again shortly.",
       };
     }
 
@@ -969,24 +963,7 @@ export function createProjectStartRetrier(fetchImpl: typeof fetch = fetch) {
 }
 ```
 
-Note: `readErrorCode` reads the response body via `res.json()` a second time (after `readErrorMessage` in the 503 branch of `performSubmit` only calls `readErrorMessage`, not `readErrorCode` — so no double-read there). In `performRetryStart`'s 503 branch, both `readErrorCode(res)` and `readErrorMessage(res)` are called on the same `Response`. Since the real `fetch` `Response.json()` can only be consumed once, and the test doubles in this file return a fresh object from `res.json()` on every call (see `jsonResponse` in the test file, which returns a closure — safe to call repeatedly), this works in tests. For the real browser `fetch` Response this would throw on the second `.json()` call — fix this before Step 4 by reading the body once and reusing it:
-
-Replace the 503 branch inside `performRetryStart` with:
-
-```ts
-    if (res.status === 503) {
-      const payload = await res
-        .json()
-        .catch(() => undefined as { error?: string; code?: string } | undefined);
-      return {
-        ok: false,
-        kind: payload?.code === "persistence_unavailable" ? "unavailable" : "server",
-        message: payload?.error ?? "The AI workflow isn't ready to start yet. Please try again shortly.",
-      };
-    }
-```
-
-and delete the now-unused `readErrorCode` helper function entirely (it is no longer called anywhere).
+Note: `performSubmit`'s own 503 branch (inside the `!startRes.ok` block above) still uses `readErrorMessage(startRes)` — that call site reads the body once and is unaffected by the `performRetryStart` fix above; the two functions read two different `Response` objects, so there is no cross-function double-read to worry about.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
