@@ -364,6 +364,7 @@ Then append:
   });
 
   it("13: the 503 response reassures the user their project is saved and does not leak the raw configuration error text", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     startBusinessStrategistExecutionMock.mockRejectedValueOnce(
       new PersistenceConfigurationError("Supabase persistence requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. Missing: SUPABASE_URL."),
     );
@@ -373,6 +374,7 @@ Then append:
 
     expect(body.error).toMatch(/saved/i);
     expect(body.error).not.toMatch(/SUPABASE_URL/);
+    consoleErrorSpy.mockRestore();
   });
 
   it("14: a generic unexpected error still produces the existing plain 500 (unaffected by the new classification)", async () => {
