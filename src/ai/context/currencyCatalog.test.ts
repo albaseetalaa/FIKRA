@@ -67,7 +67,7 @@ describe("currencyCatalog", () => {
     it("accepts JOD even when Intl.supportedValuesOf returns an incomplete (small-ICU-shaped) list", async () => {
       const original = Intl.supportedValuesOf;
       (Intl as unknown as { supportedValuesOf: (key: string) => string[] }).supportedValuesOf = (key: string) =>
-        key === "currency" ? ["USD", "EUR", "GBP"] : original(key as any);
+        key === "currency" ? ["USD", "EUR", "GBP"] : original(key as Parameters<typeof original>[0]);
 
       try {
         const { isValidCurrencyCode: freshIsValidCurrencyCode } = await import("./currencyCatalog");
