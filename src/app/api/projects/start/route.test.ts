@@ -44,6 +44,7 @@ vi.mock("@/lib/project-workflow/service", () => ({
 }));
 
 import { POST } from "./route";
+import { PersistenceConfigurationError } from "@/lib/persistence/setup";
 
 function jsonRequest(body: unknown) {
   return new Request("https://fikra.test/api/projects/start", {
@@ -161,5 +162,45 @@ describe("projects start route", () => {
     expect("userId" in body).toBe(false);
     expect("organizationId" in body).toBe(false);
     expect("createdBy" in body).toBe(false);
+  });
+
+  it("12: a PersistenceConfigurationError from the start path produces HTTP 503 with a persistence_unavailable code, not a generic 500", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    startBusinessStrategistExecutionMock.mockRejectedValueOnce(
+      new PersistenceConfigurationError("Production persistence requires AI_PERSISTENCE_PROVIDER=supabase."),
+    );
+
+    const res = await POST(jsonRequest({ projectId: "proj_test_1" }));
+    const body = (await res.json()) as { error?: string; code?: string };
+
+    expect(res.status).toBe(503);
+    expect(body.code).toBe("persistence_unavailable");
+    expect(typeof body.error).toBe("string");
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy.mock.calls[0]?.[0]).toMatch(/persistence/i);
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("13: the 503 response reassures the user their project is saved and does not leak the raw configuration error text", async () => {
+    startBusinessStrategistExecutionMock.mockRejectedValueOnce(
+      new PersistenceConfigurationError("Supabase persistence requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. Missing: SUPABASE_URL."),
+    );
+
+    const res = await POST(jsonRequest({ projectId: "proj_test_1" }));
+    const body = (await res.json()) as { error?: string };
+
+    expect(body.error).toMatch(/saved/i);
+    expect(body.error).not.toMatch(/SUPABASE_URL/);
+  });
+
+  it("14: a generic unexpected error still produces the existing plain 500 (unaffected by the new classification)", async () => {
+    startBusinessStrategistExecutionMock.mockRejectedValueOnce(new Error("boom"));
+
+    const res = await POST(jsonRequest({ projectId: "proj_test_1" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: "Could not start execution." });
   });
 });
