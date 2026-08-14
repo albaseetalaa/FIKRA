@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isValidCurrencyCode, normalizeCurrencyCode, listSupportedCurrencyCodes } from "./currencyCatalog";
 
 describe("currencyCatalog", () => {
@@ -56,6 +56,37 @@ describe("currencyCatalog", () => {
       const list = listSupportedCurrencyCodes();
       expect(list).not.toContain("AAA");
       expect(list).not.toContain("JDO");
+    });
+  });
+
+  describe("isValidCurrencyCode runtime independence", () => {
+    beforeEach(() => {
+      vi.resetModules();
+    });
+
+    it("accepts JOD even when Intl.supportedValuesOf returns an incomplete (small-ICU-shaped) list", async () => {
+      const original = Intl.supportedValuesOf;
+      (Intl as unknown as { supportedValuesOf: (key: string) => string[] }).supportedValuesOf = (key: string) =>
+        key === "currency" ? ["USD", "EUR", "GBP"] : original(key as any);
+
+      try {
+        const { isValidCurrencyCode: freshIsValidCurrencyCode } = await import("./currencyCatalog");
+        expect(freshIsValidCurrencyCode("JOD")).toBe(true);
+      } finally {
+        Intl.supportedValuesOf = original;
+      }
+    });
+
+    it("accepts JOD even when Intl.supportedValuesOf is unavailable entirely", async () => {
+      const original = Intl.supportedValuesOf;
+      delete (Intl as unknown as Record<string, unknown>).supportedValuesOf;
+
+      try {
+        const { isValidCurrencyCode: freshIsValidCurrencyCode } = await import("./currencyCatalog");
+        expect(freshIsValidCurrencyCode("JOD")).toBe(true);
+      } finally {
+        Intl.supportedValuesOf = original;
+      }
     });
   });
 });
