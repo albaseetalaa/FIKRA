@@ -114,9 +114,11 @@ component and no ad-hoc styling:
 Distinguish this from a genuine **create failure** (no project persisted — a
 simpler error state with no recovery actions, since there is nothing to recover).
 
-The incidental `</p>` typo at `CreateProjectWizard.tsx:243` (noticed during the
-audit) is fixed as part of this same edit, since it sits directly in this file's
-blast radius.
+**Correction:** an earlier audit pass reported a `</p>` typo at
+`CreateProjectWizard.tsx:243`. Reading the file directly while writing the
+implementation plan showed this was inaccurate — the JSX there was already
+valid. No typo fix is part of this change; this note replaces the earlier,
+incorrect claim so the spec doesn't carry it into implementation.
 
 ### My Projects discoverability outside the failure state
 The recovery panel and the in-workspace `TopNav` are not sufficient on their own:
