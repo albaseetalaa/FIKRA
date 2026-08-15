@@ -397,6 +397,18 @@ Expected: tests 12 and 13 **FAIL** (status is 500, not 503; body has no `code` f
 
 Replace the entire contents of `src/app/api/projects/start/route.ts` with:
 
+> **Note (reconciled post-hoc, see the Task 8 addendum below):** the import
+> shown in this snippet (`PersistenceConfigurationError` from
+> `@/lib/persistence/setup`) is what this task originally wrote, but it does
+> **not** match the final shipped code. The Task 8 addendum documents a real
+> architectural-boundary violation this caused (routes may not import
+> `src/lib/persistence` directly) and its fix: the shipped route imports
+> `PersistenceConfigurationError` from `@/lib/project-workflow/service`
+> instead, alongside `authorizeProjectStart`, `ProjectStartAuthorizationError`,
+> and `startBusinessStrategistExecution`. Read the Task 8 addendum for the
+> authoritative final import shape — this snippet is left as originally
+> written for history.
+
 ```ts
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/requireAuthenticatedUser";
 import { NextResponse } from "next/server";
@@ -967,6 +979,15 @@ export function createProjectStartRetrier(fetchImpl: typeof fetch = fetch) {
 
 Note: `performSubmit`'s own 503 branch (inside the `!startRes.ok` block above) still uses `readErrorMessage(startRes)` — that call site reads the body once and is unaffected by the `performRetryStart` fix above; the two functions read two different `Response` objects, so there is no cross-function double-read to worry about.
 
+> **Note (reconciled post-hoc, added during the final whole-branch review):**
+> the `createProjectStartRetrier`/`performRetryStart` snippet above is the
+> version this task originally wrote — it does not key its in-flight guard by
+> `projectId`, and its cleanup is not identity-guarded. Two later fix rounds
+> (documented in this repo's fix ledger, not reproduced here) changed the
+> final shipped `submitProject.ts` beyond what's shown above. Do not treat
+> this snippet as the final implementation; read the shipped file directly
+> for the authoritative current behavior.
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/app/(onboarding)/create-project/submitProject.test.ts`
@@ -1259,6 +1280,17 @@ Expected: **FAIL** — `src/app/(onboarding)/layout.tsx` does not exist yet (mod
 - [ ] **Step 3: Create the layout**
 
 Create `src/app/(onboarding)/layout.tsx`:
+
+> **Note (reconciled post-hoc, added during the final whole-branch review):**
+> the long comment below explaining *why* `React` is explicitly imported
+> (Vitest's classic-JSX esbuild transform vs. Next's automatic runtime) was
+> written for this task but was never actually committed to the shipped
+> file — the shipped `layout.tsx` keeps the explicit `import React from
+> "react";` but only carries the shorter "Scoped to the (onboarding) route
+> group..." comment below it, not this explanation. The import itself is
+> correct and present in both; only the long inline rationale differs. Read
+> the shipped file directly rather than relying on this snippet's comment
+> text.
 
 ```tsx
 import React from "react";
