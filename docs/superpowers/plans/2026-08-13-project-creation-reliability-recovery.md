@@ -1337,9 +1337,28 @@ resolves)."
 
 ### Task 8: Full verification pass
 
-**Files:** none (verification only)
+**Files:** none (verification only), except for one real finding surfaced during
+execution — see the addendum below.
 
 **Interfaces:** none.
+
+**Addendum (discovered during execution, not anticipated by this plan):** the
+first full-suite run (`npm test`) surfaced a genuine architectural-boundary
+violation that no individual task's scoped test run could have caught:
+`src/app/api/importBoundary.test.ts` (pre-existing, untouched by this plan)
+statically forbids any `route.ts` under `src/app/api` from importing
+`src/lib/persistence` directly — routes must go through the service layer
+(`src/lib/project-workflow/service.ts`) instead. Task 2 added
+`PersistenceConfigurationError` to `src/lib/persistence/setup.ts`, and Task 3
+imported it straight into `src/app/api/projects/start/route.ts`, tripping this
+boundary. Fixed by re-exporting the class from `service.ts` (matching the
+existing `ProjectStartAuthorizationError` pattern already used by the same
+route) and importing it from there instead, plus updating
+`route.test.ts`'s `vi.mock("@/lib/project-workflow/service", ...)` factory to
+expose the real class via `vi.importActual` so `instanceof` checks in the
+route still work against the mock. Three files, one commit
+(`6408d5d`), independently verified: lint clean, type-check clean, all
+targeted tests still pass, full suite 708/708.
 
 - [ ] **Step 1: Run the full repository gates**
 
