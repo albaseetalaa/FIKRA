@@ -1,7 +1,11 @@
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/requireAuthenticatedUser";
 import { NextResponse } from "next/server";
-import { authorizeProjectStart, ProjectStartAuthorizationError, startBusinessStrategistExecution } from "@/lib/project-workflow/service";
-import { PersistenceConfigurationError } from "@/lib/persistence/setup";
+import {
+  authorizeProjectStart,
+  PersistenceConfigurationError,
+  ProjectStartAuthorizationError,
+  startBusinessStrategistExecution,
+} from "@/lib/project-workflow/service";
 
 export async function POST(req: Request) {
   let projectId: string | undefined;

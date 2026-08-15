@@ -24,6 +24,7 @@ import {
 } from "../../ai/workflow/stateMachine";
 import { getPersistenceContainer, getRequestPersistenceContainer, getSystemPersistenceContainer } from "../persistence/setup";
 import type { AuthorizationContext } from "../persistence/setup";
+export { PersistenceConfigurationError } from "../persistence/setup";
 import type { AttemptStatus, ProjectHistoryItem, ProjectStatusView, WorkflowCheckpointRecord, WorkflowRunRecord } from "../persistence/types";
 import type { ProjectContext } from "../../ai/context";
 import type { CreateProjectRpcExecutor } from "./createProjectRpc";

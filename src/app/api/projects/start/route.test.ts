@@ -37,11 +37,15 @@ const { authorizeProjectStartMock, startBusinessStrategistExecutionMock, Project
   };
 });
 
-vi.mock("@/lib/project-workflow/service", () => ({
-  authorizeProjectStart: authorizeProjectStartMock,
-  startBusinessStrategistExecution: startBusinessStrategistExecutionMock,
-  ProjectStartAuthorizationError: ProjectStartAuthorizationErrorMock,
-}));
+vi.mock("@/lib/project-workflow/service", async () => {
+  const persistenceSetup = await vi.importActual<typeof import("@/lib/persistence/setup")>("@/lib/persistence/setup");
+  return {
+    authorizeProjectStart: authorizeProjectStartMock,
+    startBusinessStrategistExecution: startBusinessStrategistExecutionMock,
+    ProjectStartAuthorizationError: ProjectStartAuthorizationErrorMock,
+    PersistenceConfigurationError: persistenceSetup.PersistenceConfigurationError,
+  };
+});
 
 import { POST } from "./route";
 import { PersistenceConfigurationError } from "@/lib/persistence/setup";
