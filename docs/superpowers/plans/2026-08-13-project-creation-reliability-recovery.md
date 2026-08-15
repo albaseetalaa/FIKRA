@@ -1261,10 +1261,20 @@ Expected: **FAIL** — `src/app/(onboarding)/layout.tsx` does not exist yet (mod
 Create `src/app/(onboarding)/layout.tsx`:
 
 ```tsx
+import React from "react";
 import Link from "next/link";
 
 import { getOptionalUser } from "@/lib/auth/getOptionalUser";
 
+// Explicit React import (unlike src/app/layout.tsx, which omits it):
+// tsconfig.json's "jsx": "preserve" means Next.js's own bundler handles
+// the actual JSX transform at build time using the automatic runtime, so
+// omitting this import works fine in the real app — but Vitest's default
+// esbuild transform for .tsx files uses the classic JSX mode, which
+// requires React in scope at runtime. This file has a test that actually
+// renders it (via renderToStaticMarkup), so it needs the explicit import
+// to avoid a runtime "React is not defined" failure under the test
+// environment specifically.
 // Scoped to the (onboarding) route group only (create-project and
 // create-project/processing today). header.tsx (marketing-only chrome)
 // and TopNav (workspace-only, dark-themed, raw-Tailwind-styled) are both
