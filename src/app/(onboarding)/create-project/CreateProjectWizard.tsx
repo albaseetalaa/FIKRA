@@ -31,6 +31,7 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [data, setData] = useState<WizardData>(() => loadDraft(userId, initialWizardData));
   const [failedStartProjectId, setFailedStartProjectId] = useState<string | null>(null);
   const [retryingStart, setRetryingStart] = useState(false);
@@ -78,11 +79,16 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
   function saveDraftNow() {
     const saved = saveDraft(userId, data);
     setDraftSavedAt(saved ? Date.now() : null);
-    setSubmitError(saved ? null : "Could not save draft to this device's local storage.");
+    // Uses its own draftError state rather than submitError: submitError
+    // is also the message shown inside the recovery panel (when
+    // failedStartProjectId is set), and a draft save can happen while
+    // that panel is showing. Reusing submitError here would silently
+    // clear or overwrite the panel's message with draft-save feedback.
+    setDraftError(saved ? null : "Could not save draft to this device's local storage.");
   }
 
   async function submit() {
-    if (submitting) return;
+    if (submitting || failedStartProjectId) return;
     setSubmitError(null);
     setFailedStartProjectId(null);
     setSubmitting(true);
@@ -264,11 +270,13 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
             onSaveDraft={saveDraftNow}
             onSubmit={submit}
             submitting={submitting}
+            submitDisabled={!!failedStartProjectId}
           />
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Draft is saved locally on this device only — it is not uploaded until you create your project.
           </p>
           {draftSavedAt ? <p className="text-sm text-emerald-600 dark:text-emerald-400">Draft saved locally.</p> : null}
+          {draftError ? <p className="text-sm text-rose-500">{draftError}</p> : null}
           {failedStartProjectId ? (
             <div className="space-y-3 rounded-lg border border-border-default bg-surface-subtle p-4">
               <p className="text-sm font-medium text-text-primary">Your project is safely saved.</p>

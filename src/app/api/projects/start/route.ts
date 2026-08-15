@@ -44,6 +44,7 @@ export async function POST(req: Request) {
     if (error instanceof PersistenceConfigurationError) {
       console.error("[api/projects/start] persistence is not configured for this environment", {
         projectId: projectId ?? null,
+        reason: error.message,
       });
       return NextResponse.json(
         {
