@@ -12,9 +12,10 @@ import SelectField from "@/components/wizard/fields/SelectField";
 import MultiSelectCard from "@/components/wizard/MultiSelectCard";
 import ReviewSection from "@/components/wizard/ReviewSection";
 import WizardNavigation from "@/components/wizard/WizardNavigation";
+import { Button } from "@/components/ui/button";
 
 import { loadDraft, saveDraft } from "./draftStorage";
-import { createProjectSubmitter } from "./submitProject";
+import { createProjectStartRetrier, createProjectSubmitter } from "./submitProject";
 import { initialWizardData, type WizardData } from "./types";
 import {
   BUDGET_RANGE_OPTIONS,
@@ -30,8 +31,12 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [data, setData] = useState<WizardData>(() => loadDraft(userId, initialWizardData));
+  const [failedStartProjectId, setFailedStartProjectId] = useState<string | null>(null);
+  const [retryingStart, setRetryingStart] = useState(false);
   const submitRef = useRef(createProjectSubmitter());
+  const retryStartRef = useRef(createProjectStartRetrier());
 
   const totalSteps = 6;
 
@@ -74,12 +79,18 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
   function saveDraftNow() {
     const saved = saveDraft(userId, data);
     setDraftSavedAt(saved ? Date.now() : null);
-    setSubmitError(saved ? null : "Could not save draft to this device's local storage.");
+    // Uses its own draftError state rather than submitError: submitError
+    // is also the message shown inside the recovery panel (when
+    // failedStartProjectId is set), and a draft save can happen while
+    // that panel is showing. Reusing submitError here would silently
+    // clear or overwrite the panel's message with draft-save feedback.
+    setDraftError(saved ? null : "Could not save draft to this device's local storage.");
   }
 
   async function submit() {
-    if (submitting) return;
+    if (submitting || failedStartProjectId) return;
     setSubmitError(null);
+    setFailedStartProjectId(null);
     setSubmitting(true);
 
     const result = await submitRef.current(data);
@@ -90,11 +101,36 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
 
       if (result.kind === "auth") {
         router.push(`/login?next=${encodeURIComponent("/create-project")}`);
+        return;
+      }
+
+      if (result.stage === "start" && result.projectId) {
+        setFailedStartProjectId(result.projectId);
       }
       return;
     }
 
     router.push(`/create-project/processing?projectId=${encodeURIComponent(result.projectId)}`);
+  }
+
+  async function handleRetryStart() {
+    if (!failedStartProjectId || retryingStart) return;
+    setRetryingStart(true);
+    setSubmitError(null);
+
+    const result = await retryStartRef.current(failedStartProjectId);
+
+    if (!result.ok) {
+      setSubmitError(result.message);
+      setRetryingStart(false);
+
+      if (result.kind === "auth") {
+        router.push(`/login?next=${encodeURIComponent("/create-project")}`);
+      }
+      return;
+    }
+
+    router.push(`/create-project/processing?projectId=${encodeURIComponent(failedStartProjectId)}`);
   }
 
   return (
@@ -234,12 +270,35 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
             onSaveDraft={saveDraftNow}
             onSubmit={submit}
             submitting={submitting}
+            submitDisabled={!!failedStartProjectId}
           />
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Draft is saved locally on this device only — it is not uploaded until you create your project.
           </p>
           {draftSavedAt ? <p className="text-sm text-emerald-600 dark:text-emerald-400">Draft saved locally.</p> : null}
-          {submitError ? <p className="text-sm text-rose-500">{submitError}</p> : null}
+          {draftError ? <p className="text-sm text-rose-500">{draftError}</p> : null}
+          {failedStartProjectId ? (
+            <div className="space-y-3 rounded-lg border border-border-default bg-surface-subtle p-4">
+              <p className="text-sm font-medium text-text-primary">Your project is safely saved.</p>
+              <p className="text-sm text-text-secondary">{submitError ?? "The AI workflow hasn't started yet."}</p>
+              <div className="flex flex-wrap gap-3">
+                <Button variant="primary" loading={retryingStart} onClick={handleRetryStart}>
+                  Retry Start
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => router.push(`/workspace/demo?projectId=${encodeURIComponent(failedStartProjectId)}`)}
+                >
+                  Open Project
+                </Button>
+                <Button variant="ghost" onClick={() => router.push("/projects")}>
+                  My Projects
+                </Button>
+              </div>
+            </div>
+          ) : submitError ? (
+            <p className="text-sm text-rose-500">{submitError}</p>
+          ) : null}
           {submitting ? <p className="text-sm text-slate-500">Starting AI workflow...</p> : null}
         </div>
       </div>

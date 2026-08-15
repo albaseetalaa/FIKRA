@@ -15,6 +15,7 @@ export default function WizardNavigation({
   onSaveDraft,
   onSubmit,
   submitting = false,
+  submitDisabled = false,
 }: {
   step: number;
   total: number;
@@ -24,6 +25,11 @@ export default function WizardNavigation({
   onSaveDraft: () => void;
   onSubmit: () => void;
   submitting?: boolean;
+  // When true, hides the primary "Create My Project" action entirely
+  // instead of just disabling it — used while a create-succeeded/
+  // start-failed recovery panel is showing, so re-invoking create is
+  // structurally impossible from this control, not just discouraged.
+  submitDisabled?: boolean;
 }) {
   return (
     <div className="mt-6 flex items-center justify-between gap-4">
@@ -41,7 +47,7 @@ export default function WizardNavigation({
           <Button onClick={onContinue} disabled={!canContinue}>
             Continue
           </Button>
-        ) : (
+        ) : submitDisabled ? null : (
           <>
             <span role="status" className="sr-only">
               {submitting ? CREATE_PENDING_LABEL : ""}
