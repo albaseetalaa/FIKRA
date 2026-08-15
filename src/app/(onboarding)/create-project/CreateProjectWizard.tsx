@@ -12,9 +12,10 @@ import SelectField from "@/components/wizard/fields/SelectField";
 import MultiSelectCard from "@/components/wizard/MultiSelectCard";
 import ReviewSection from "@/components/wizard/ReviewSection";
 import WizardNavigation from "@/components/wizard/WizardNavigation";
+import { Button } from "@/components/ui/button";
 
 import { loadDraft, saveDraft } from "./draftStorage";
-import { createProjectSubmitter } from "./submitProject";
+import { createProjectStartRetrier, createProjectSubmitter } from "./submitProject";
 import { initialWizardData, type WizardData } from "./types";
 import {
   BUDGET_RANGE_OPTIONS,
@@ -31,7 +32,10 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
   const [data, setData] = useState<WizardData>(() => loadDraft(userId, initialWizardData));
+  const [failedStartProjectId, setFailedStartProjectId] = useState<string | null>(null);
+  const [retryingStart, setRetryingStart] = useState(false);
   const submitRef = useRef(createProjectSubmitter());
+  const retryStartRef = useRef(createProjectStartRetrier());
 
   const totalSteps = 6;
 
@@ -80,6 +84,7 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
   async function submit() {
     if (submitting) return;
     setSubmitError(null);
+    setFailedStartProjectId(null);
     setSubmitting(true);
 
     const result = await submitRef.current(data);
@@ -90,11 +95,36 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
 
       if (result.kind === "auth") {
         router.push(`/login?next=${encodeURIComponent("/create-project")}`);
+        return;
+      }
+
+      if (result.stage === "start" && result.projectId) {
+        setFailedStartProjectId(result.projectId);
       }
       return;
     }
 
     router.push(`/create-project/processing?projectId=${encodeURIComponent(result.projectId)}`);
+  }
+
+  async function handleRetryStart() {
+    if (!failedStartProjectId || retryingStart) return;
+    setRetryingStart(true);
+    setSubmitError(null);
+
+    const result = await retryStartRef.current(failedStartProjectId);
+
+    if (!result.ok) {
+      setSubmitError(result.message);
+      setRetryingStart(false);
+
+      if (result.kind === "auth") {
+        router.push(`/login?next=${encodeURIComponent("/create-project")}`);
+      }
+      return;
+    }
+
+    router.push(`/create-project/processing?projectId=${encodeURIComponent(failedStartProjectId)}`);
   }
 
   return (
@@ -239,7 +269,28 @@ export default function CreateProjectWizard({ userId }: { userId: string }) {
             Draft is saved locally on this device only — it is not uploaded until you create your project.
           </p>
           {draftSavedAt ? <p className="text-sm text-emerald-600 dark:text-emerald-400">Draft saved locally.</p> : null}
-          {submitError ? <p className="text-sm text-rose-500">{submitError}</p> : null}
+          {failedStartProjectId ? (
+            <div className="space-y-3 rounded-lg border border-border-default bg-surface-subtle p-4">
+              <p className="text-sm font-medium text-text-primary">Your project is safely saved.</p>
+              <p className="text-sm text-text-secondary">{submitError ?? "The AI workflow hasn't started yet."}</p>
+              <div className="flex flex-wrap gap-3">
+                <Button variant="primary" loading={retryingStart} onClick={handleRetryStart}>
+                  Retry Start
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => router.push(`/workspace/demo?projectId=${encodeURIComponent(failedStartProjectId)}`)}
+                >
+                  Open Project
+                </Button>
+                <Button variant="ghost" onClick={() => router.push("/projects")}>
+                  My Projects
+                </Button>
+              </div>
+            </div>
+          ) : submitError ? (
+            <p className="text-sm text-rose-500">{submitError}</p>
+          ) : null}
           {submitting ? <p className="text-sm text-slate-500">Starting AI workflow...</p> : null}
         </div>
       </div>
