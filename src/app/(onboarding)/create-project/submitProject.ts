@@ -226,16 +226,24 @@ async function performRetryStart(projectId: string, fetchImpl: typeof fetch): Pr
  * "Retry Start" — it never touches /api/projects/create, so retrying a
  * failed start can never create a second project. Like
  * createProjectSubmitter, concurrent calls collapse into one in-flight
- * request so repeated clicks cannot trigger overlapping start attempts.
+ * request so repeated clicks cannot trigger overlapping start attempts —
+ * but only when they target the same projectId. The in-flight promise is
+ * keyed on the projectId it was started for, so a retrier instance shared
+ * across multiple projects (e.g. one retrier reused across rows in a
+ * project list) still issues one request per distinct project instead of
+ * one call silently returning another project's result.
  */
 export function createProjectStartRetrier(fetchImpl: typeof fetch = fetch) {
   let inFlight: Promise<RetryStartResult> | null = null;
+  let inFlightProjectId: string | null = null;
 
   return function retryStart(projectId: string): Promise<RetryStartResult> {
-    if (inFlight) return inFlight;
+    if (inFlight && inFlightProjectId === projectId) return inFlight;
 
+    inFlightProjectId = projectId;
     inFlight = performRetryStart(projectId, fetchImpl).finally(() => {
       inFlight = null;
+      inFlightProjectId = null;
     });
 
     return inFlight;

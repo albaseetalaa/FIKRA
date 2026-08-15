@@ -284,6 +284,24 @@ describe("createProjectStartRetrier", () => {
     expect(first).toEqual(second);
   });
 
+  it("keeps concurrent retries for different projectIds independent (no cross-project result mixing)", async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const { projectId } = JSON.parse(init?.body as string) as { projectId: string };
+      if (projectId === "proj_a") return jsonResponse(200, { status: "running" });
+      return jsonResponse(500, { error: "Could not start execution." });
+    });
+
+    const retryStart = createProjectStartRetrier(fetchImpl as unknown as typeof fetch);
+    const [resultA, resultB] = await Promise.all([retryStart("proj_a"), retryStart("proj_b")]);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(resultA).toEqual({ ok: true });
+    expect(resultB.ok).toBe(false);
+    if (!resultB.ok) {
+      expect(resultB.kind).toBe("server");
+    }
+  });
+
   it("allows a new retry after the previous one has settled", async () => {
     let startCalls = 0;
     const fetchImpl = vi.fn(async () => {
