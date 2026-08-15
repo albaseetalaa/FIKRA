@@ -231,7 +231,12 @@ async function performRetryStart(projectId: string, fetchImpl: typeof fetch): Pr
  * keyed on the projectId it was started for, so a retrier instance shared
  * across multiple projects (e.g. one retrier reused across rows in a
  * project list) still issues one request per distinct project instead of
- * one call silently returning another project's result.
+ * one call silently returning another project's result. Cleanup is
+ * identity-guarded: a call only clears the shared in-flight state if that
+ * state still points at *its own* promise, so an earlier call settling
+ * (and running its `.finally`) can never clobber a later, still-pending
+ * call's tracking — which would otherwise let a double-click on the later
+ * call slip through as a duplicate request instead of collapsing.
  */
 export function createProjectStartRetrier(fetchImpl: typeof fetch = fetch) {
   let inFlight: Promise<RetryStartResult> | null = null;
@@ -240,12 +245,16 @@ export function createProjectStartRetrier(fetchImpl: typeof fetch = fetch) {
   return function retryStart(projectId: string): Promise<RetryStartResult> {
     if (inFlight && inFlightProjectId === projectId) return inFlight;
 
-    inFlightProjectId = projectId;
-    inFlight = performRetryStart(projectId, fetchImpl).finally(() => {
-      inFlight = null;
-      inFlightProjectId = null;
+    const thisCall: Promise<RetryStartResult> = performRetryStart(projectId, fetchImpl).finally(() => {
+      if (inFlight === thisCall) {
+        inFlight = null;
+        inFlightProjectId = null;
+      }
     });
 
-    return inFlight;
+    inFlight = thisCall;
+    inFlightProjectId = projectId;
+
+    return thisCall;
   };
 }

@@ -302,6 +302,52 @@ describe("createProjectStartRetrier", () => {
     }
   });
 
+  it("does not let an earlier call's cleanup clobber a later, still-pending call's in-flight tracking", async () => {
+    let resolveA!: (value: Response) => void;
+    let resolveB!: (value: Response) => void;
+    const pendingA = new Promise<Response>((resolve) => {
+      resolveA = resolve;
+    });
+    const pendingB = new Promise<Response>((resolve) => {
+      resolveB = resolve;
+    });
+
+    let bCallCount = 0;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const { projectId } = JSON.parse(init?.body as string) as { projectId: string };
+      if (projectId === "proj_a") return pendingA;
+      bCallCount += 1;
+      return pendingB;
+    });
+
+    const retryStart = createProjectStartRetrier(fetchImpl as unknown as typeof fetch);
+
+    // Start proj_a and proj_b concurrently — both requests are in flight,
+    // proj_b having overwritten the shared "current in-flight" tracking
+    // (per the round-1 fix, since they are different projectIds).
+    const firstA = retryStart("proj_a");
+    const firstB = retryStart("proj_b");
+
+    // proj_a settles first, while proj_b is still pending. Awaiting firstA
+    // guarantees its .finally cleanup has already run by the time we
+    // continue, since .finally()'s returned promise resolves only after
+    // the callback completes.
+    resolveA(jsonResponse(200, { status: "running" }));
+    await firstA;
+
+    // A double-click style retry for the still-pending proj_b arrives now.
+    // If proj_a's cleanup incorrectly cleared the shared in-flight state
+    // (the round-1 bug), this would start a second, duplicate fetch for
+    // proj_b instead of collapsing into the still-pending one.
+    const secondB = retryStart("proj_b");
+
+    resolveB(jsonResponse(200, { status: "running" }));
+    const [resultB1, resultB2] = await Promise.all([firstB, secondB]);
+
+    expect(bCallCount).toBe(1);
+    expect(resultB1).toEqual(resultB2);
+  });
+
   it("allows a new retry after the previous one has settled", async () => {
     let startCalls = 0;
     const fetchImpl = vi.fn(async () => {
