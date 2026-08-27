@@ -1,7 +1,7 @@
 import type { ProjectContext } from "../context";
 import type { OutputModelName } from "../types/outputs";
 import { getProviderOutputSchema } from "../providers/outputSchemas";
-import { validateModel } from "../validation/validator";
+import { validateModel, validateModelStructure } from "../validation/validator";
 import {
   validateBusinessPlanSemantics,
   validateFinancialModelSemantics,
@@ -27,8 +27,14 @@ function toCanonicalContract(contract: RawOutputContract): OutputContract {
   };
 }
 
-function structural(outputType: OutputModelName, raw: unknown, projectContext?: ProjectContext) {
-  return validateModel(outputType, raw, { projectContext });
+// Structural stage: schema shape only, via validateModelStructure(). It
+// deliberately does not accept projectContext — projectContext only feeds
+// semantic/business rules, which belong to each contract's semanticValidator
+// (see validateModel(), which each semanticValidator still calls for the
+// full schema+semantics pass). Keeping this parameter lets every call site
+// below stay unchanged even though it's now unused here.
+function structural(outputType: OutputModelName, raw: unknown, _projectContext?: ProjectContext) {
+  return validateModelStructure(outputType, raw);
 }
 
 const emptySemantic = () => [] as string[];
