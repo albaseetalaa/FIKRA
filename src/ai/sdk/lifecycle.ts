@@ -39,6 +39,31 @@ function isNonEmptyString(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+/**
+ * Overwrites modelProvider/modelName on structured, object-shaped outputs
+ * with the actual runtime provider/model from the execution context — never
+ * the model's own claim. This runs after provider-response parsing and
+ * before structural/semantic validation, so a model that omits, nulls, or
+ * fabricates these fields can never have that value observed, persisted, or
+ * validated; the system-owned value always wins. Scoped to BusinessPlan only
+ * (the output type this was reported against) to avoid touching unrelated
+ * contracts that don't declare these fields.
+ */
+function withSystemOwnedProvenance(
+  outputType: string,
+  value: unknown,
+  provenance: { selectedProviderId: string; providerModel: string },
+): unknown {
+  if (outputType !== "BusinessPlan") return value;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+
+  return {
+    ...(value as Record<string, unknown>),
+    modelProvider: provenance.selectedProviderId,
+    modelName: provenance.providerModel,
+  };
+}
+
 function extractProviderResponse(invokeResult: unknown): { rawPayload: unknown; output: unknown; metadata: ProviderInvokeMetadata } {
   const record = invokeResult && typeof invokeResult === "object"
     ? (invokeResult as Record<string, unknown>)
@@ -393,7 +418,12 @@ export async function executeAgentLifecycle(input: {
     });
 
     const parseSucceeded = parseAnalysis.parseSucceeded;
-    const parsedOutput = parseSucceeded ? parseAnalysis.value : null;
+    const parsedOutput = parseSucceeded
+      ? withSystemOwnedProvenance(outputContract.outputType, parseAnalysis.value, {
+          selectedProviderId: executionContext.selectedProviderId,
+          providerModel: executionContext.providerModel,
+        })
+      : null;
 
     const schemaErrors: Array<{ message: string; path?: unknown; code?: string }> = [];
     let semanticIssues: string[] = [];

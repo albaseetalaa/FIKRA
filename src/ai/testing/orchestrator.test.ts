@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import Orchestrator from "../orchestrator";
 import pipelines from "../pipelines/pipelines";
 import agents from "../agents/definitions";
@@ -17,6 +17,11 @@ const eggreenContext: ProjectContext = createProjectContextFixture({
 });
 
 describe("Orchestrator validation flow", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+
   it("stores valid agent outputs and marks task completed", async () => {
     const orch = new Orchestrator(pipelines, agents);
     // register a valid business plan for the business_strategist
@@ -172,5 +177,23 @@ describe("Orchestrator validation flow", () => {
     } finally {
       globalProviderManager.clear();
     }
+  });
+
+  it("fails the task explicitly instead of silently invoking mock when the provider is unconfigured on Preview", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("AI_PROVIDER_DEFAULT", "");
+    vi.stubEnv("AI_PROVIDER_business_strategist", "");
+
+    const orch = new Orchestrator(pipelines, agents);
+    // No mock response registered and no explicit provider config: this must
+    // fail the task with a typed configuration error, not silently reach
+    // MockProvider the way it would in local/test.
+    const tasks = await orch.startPipeline("business_strategist_only", "proj-deployed-unconfigured");
+    const task = tasks.find((t) => t.step.agent === "business_strategist");
+
+    expect(task?.status).toBe("failed");
+    expect(task?.result?.success).toBe(false);
+    expect(task?.result?.error).toMatch(/AI_PROVIDER_business_strategist|AI_PROVIDER_DEFAULT/);
   });
 });
