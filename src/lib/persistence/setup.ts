@@ -21,6 +21,13 @@ import {
 } from "./supabase/repositories";
 import type { PersistenceProvider } from "./types";
 
+export class PersistenceConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PersistenceConfigurationError";
+  }
+}
+
 let globalContainer: PersistenceContainer | null = null;
 let globalSupabaseClient: SupabaseClient | null = null;
 
@@ -34,7 +41,7 @@ function resolveProvider(): PersistenceProvider {
 
   if (nodeEnv === "production") {
     if (configured !== "supabase") {
-      throw new Error(
+      throw new PersistenceConfigurationError(
         "Production persistence requires AI_PERSISTENCE_PROVIDER=supabase.",
       );
     }
@@ -50,7 +57,7 @@ function resolveProvider(): PersistenceProvider {
     return "supabase";
   }
 
-  throw new Error(
+  throw new PersistenceConfigurationError(
     'AI_PERSISTENCE_PROVIDER must be either "memory" or "supabase".',
   );
 }
@@ -67,7 +74,7 @@ function assertSupabaseConfigured() {
   }
 
   if (missing.length > 0) {
-    throw new Error(
+    throw new PersistenceConfigurationError(
       `Supabase persistence requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. Missing: ${missing.join(", ")}.`,
     );
   }

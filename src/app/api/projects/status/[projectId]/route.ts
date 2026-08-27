@@ -1,11 +1,14 @@
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/requireAuthenticatedUser";
 import { NextResponse } from "next/server";
-import { getProjectStatus } from "@/lib/project-workflow/service";
+import { getProjectStatus, PersistenceConfigurationError } from "@/lib/project-workflow/service";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ projectId: string }> }) {
+  let projectId: string | undefined;
+
   try {
     const user = await requireAuthenticatedUser();
     const params = await ctx.params;
+    projectId = params.projectId;
     const project = await getProjectStatus({ userId: user.id }, params.projectId);
 
     if (!project) {
@@ -35,6 +38,21 @@ export async function GET(_req: Request, ctx: { params: Promise<{ projectId: str
       return NextResponse.json(
         { error: error.message },
         { status: 401 },
+      );
+    }
+
+    if (error instanceof PersistenceConfigurationError) {
+      console.error("[api/projects/status] persistence is not configured for this environment", {
+        projectId: projectId ?? null,
+        reason: error.message,
+      });
+      return NextResponse.json(
+        {
+          error:
+            "Your project status isn't available right now because this environment isn't fully configured yet. Please try again shortly.",
+          code: "persistence_unavailable",
+        },
+        { status: 503 },
       );
     }
 

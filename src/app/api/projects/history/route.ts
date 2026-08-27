@@ -1,7 +1,7 @@
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/requireAuthenticatedUser";
 import { NextResponse } from "next/server";
 import type { ProjectHistoryResponse } from "@/lib/project-workflow/historyContract";
-import { listProjectHistory } from "@/lib/project-workflow/service";
+import { listProjectHistory, PersistenceConfigurationError } from "@/lib/project-workflow/service";
 
 export async function GET() {
   try {
@@ -14,6 +14,20 @@ export async function GET() {
       return NextResponse.json(
         { error: error.message },
         { status: 401 },
+      );
+    }
+
+    if (error instanceof PersistenceConfigurationError) {
+      console.error("[api/projects/history] persistence is not configured for this environment", {
+        reason: error.message,
+      });
+      return NextResponse.json(
+        {
+          error:
+            "Your project history isn't available right now because this environment isn't fully configured yet. Please try again shortly.",
+          code: "persistence_unavailable",
+        },
+        { status: 503 },
       );
     }
 

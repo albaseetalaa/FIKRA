@@ -42,11 +42,16 @@ const { getProjectStatusMock } = vi.hoisted(() => ({
   getProjectStatusMock: vi.fn(async (_ctx: unknown, _projectId: unknown) => null as unknown),
 }));
 
-vi.mock("@/lib/project-workflow/service", () => ({
-  getProjectStatus: getProjectStatusMock,
-}));
+vi.mock("@/lib/project-workflow/service", async () => {
+  const persistenceSetup = await vi.importActual<typeof import("@/lib/persistence/setup")>("@/lib/persistence/setup");
+  return {
+    getProjectStatus: getProjectStatusMock,
+    PersistenceConfigurationError: persistenceSetup.PersistenceConfigurationError,
+  };
+});
 
 import { GET } from "./route";
+import { PersistenceConfigurationError } from "@/lib/persistence/setup";
 
 function makeRouteParams(projectId: string) {
   return { params: Promise.resolve({ projectId }) };
@@ -142,5 +147,43 @@ describe("project status route", () => {
 
     expect(res.status).toBe(500);
     expect(body).toEqual({ error: "Could not fetch project status." });
+  });
+
+  it("7: a PersistenceConfigurationError from the service produces HTTP 503 with a persistence_unavailable code, not a generic 500", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    getProjectStatusMock.mockRejectedValueOnce(
+      new PersistenceConfigurationError("Production persistence requires AI_PERSISTENCE_PROVIDER=supabase."),
+    );
+
+    const res = await GET(
+      new Request("https://fikra.test/api/projects/status/proj_test_1"),
+      makeRouteParams("proj_test_1"),
+    );
+    const body = (await res.json()) as { error?: string; code?: string };
+
+    expect(res.status).toBe(503);
+    expect(body.code).toBe("persistence_unavailable");
+    expect(typeof body.error).toBe("string");
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy.mock.calls[0]?.[0]).toMatch(/persistence/i);
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("8: the 503 response does not leak the raw configuration error text", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    getProjectStatusMock.mockRejectedValueOnce(
+      new PersistenceConfigurationError("Supabase persistence requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. Missing: SUPABASE_URL."),
+    );
+
+    const res = await GET(
+      new Request("https://fikra.test/api/projects/status/proj_test_1"),
+      makeRouteParams("proj_test_1"),
+    );
+    const body = (await res.json()) as { error?: string };
+
+    expect(body.error).not.toMatch(/SUPABASE_URL/);
+
+    consoleErrorSpy.mockRestore();
   });
 });

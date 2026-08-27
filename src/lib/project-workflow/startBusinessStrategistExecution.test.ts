@@ -294,4 +294,23 @@ describe("startBusinessStrategistExecution", () => {
     const forgedHandoff: VerifiedProjectHandoff = { projectId: project.id, organizationId: ORG_B };
     await expect(startBusinessStrategistExecution(forgedHandoff)).rejects.toBeInstanceOf(ProjectStartAuthorizationError);
   });
+
+  it("10: repeated start calls for the same still-running project never create a second workflow run", async () => {
+    const project = await seedProject({ organizationId: ORG_A });
+    await seedQueuedWorkflowRun(project.id, "run-fixture-test-10");
+    const system = getSystemPersistenceContainer();
+    const workflowRunsCreateSpy = vi.spyOn(system.workflowRuns, "create");
+    const handoff: VerifiedProjectHandoff = { projectId: project.id, organizationId: ORG_A };
+
+    registerHangingProviders();
+
+    await startBusinessStrategistExecution(handoff);
+    await startBusinessStrategistExecution(handoff);
+    await startBusinessStrategistExecution(handoff);
+
+    expect(workflowRunsCreateSpy).not.toHaveBeenCalled();
+
+    const runs = await system.workflowRuns.listByProject(project.id);
+    expect(runs).toHaveLength(1);
+  });
 });
