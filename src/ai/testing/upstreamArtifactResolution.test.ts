@@ -7,6 +7,7 @@ import mocks from "./mocks";
 import { globalAgentFactory } from "../sdk/setup";
 import { sdkAgentDefinitions } from "../agents/sdkDefinitions";
 import { createProjectContextFixture } from "../context";
+import defaultModels from "../providers/models";
 
 const reorderedDependencyPipeline: Pipeline = {
   id: "reordered_dependency_pipeline",
@@ -71,14 +72,24 @@ describe("upstream artifact resolution", () => {
       const byType = captured["dependencyArtifactsByType"] as Record<string, unknown[]>;
       const byAgent = captured["dependencyArtifactsByAgent"] as Record<string, unknown[]>;
 
+      // BusinessPlan's modelProvider/modelName are system-owned: they're
+      // always overwritten with the actual runtime provider/model (see
+      // lifecycle.ts's withSystemOwnedProvenance), never left as whatever the
+      // fixture/model output claims. Every other field round-trips unchanged.
+      const expectedBusinessPlan = {
+        ...mocks.validBusinessPlan,
+        modelProvider: defaultModels.business_strategist.provider,
+        modelName: defaultModels.business_strategist.model,
+      };
+
       expect(Array.isArray(dependencyOutputs)).toBe(true);
       expect(dependencyOutputs.length).toBe(2);
       expect(dependencyOutputs[0]).toEqual(mocks.validMarketResearchReport);
-      expect(dependencyOutputs[1]).toEqual(mocks.validBusinessPlan);
+      expect(dependencyOutputs[1]).toEqual(expectedBusinessPlan);
 
-      expect(byType.BusinessPlan?.[0]).toEqual(mocks.validBusinessPlan);
+      expect(byType.BusinessPlan?.[0]).toEqual(expectedBusinessPlan);
       expect(byType.MarketResearchReport?.[0]).toEqual(mocks.validMarketResearchReport);
-      expect(byAgent.business_strategist?.[0]).toEqual(mocks.validBusinessPlan);
+      expect(byAgent.business_strategist?.[0]).toEqual(expectedBusinessPlan);
       expect(byAgent.market_research?.[0]).toEqual(mocks.validMarketResearchReport);
     } finally {
       buildSpy.mockRestore();

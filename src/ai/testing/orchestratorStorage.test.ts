@@ -7,6 +7,7 @@ import { globalArtifactStore } from "../store/setup";
 import { InMemoryArtifactStore } from "../store/inMemoryStore";
 import type { ProjectContext } from "../context";
 import { createProjectContextFixture } from "../context";
+import defaultModels from "../providers/models";
 
 const eggreenContext: ProjectContext = createProjectContextFixture({
   projectId: "proj_eggreen",
@@ -81,7 +82,16 @@ describe("Orchestrator storage and provider flow", () => {
     expect(tasks.every((task) => task.status === "completed")).toBe(true);
     const saved = await globalArtifactStore.list("proj-flow-1");
     expect(saved.length).toBe(3);
-    expect(saved.some((artifact) => artifact.outputType === "BusinessPlan" && JSON.stringify(artifact.content) === JSON.stringify(mocks.validBusinessPlan))).toBe(true);
+    // BusinessPlan's modelProvider/modelName are system-owned: they're always
+    // overwritten with the actual runtime provider/model (see lifecycle.ts's
+    // withSystemOwnedProvenance), never left as whatever the fixture/model
+    // output claims. Every other field must still round-trip unchanged.
+    const expectedBusinessPlan = {
+      ...mocks.validBusinessPlan,
+      modelProvider: defaultModels.business_strategist.provider,
+      modelName: defaultModels.business_strategist.model,
+    };
+    expect(saved.some((artifact) => artifact.outputType === "BusinessPlan" && JSON.stringify(artifact.content) === JSON.stringify(expectedBusinessPlan))).toBe(true);
     expect(saved.some((artifact) => artifact.outputType === "MarketResearchReport" && JSON.stringify(artifact.content) === JSON.stringify(mocks.validMarketResearchReport))).toBe(true);
     expect(saved.some((artifact) => artifact.outputType === "FinancialModel" && JSON.stringify(artifact.content) === JSON.stringify(mocks.validFinancialModel))).toBe(true);
   });

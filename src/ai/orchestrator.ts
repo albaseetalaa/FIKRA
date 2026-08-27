@@ -5,6 +5,7 @@ import { logError, logInfo } from "./utils/logger";
 import { makeError, AiError } from "./errors/errors";
 import { globalProviderManager } from "./providers/manager";
 import defaultModels, { type ModelConfig } from "./providers/models";
+import { assertAgentProviderConfigured } from "./config";
 import { globalArtifactStore } from "./store/setup";
 import { TaskStateMachine, type TaskStatus } from "./workflow/stateMachine";
 import type { ProjectContext } from "./context";
@@ -202,6 +203,14 @@ export class Orchestrator {
     const agent = this.agents.find((a) => a.id === step.agent);
     const agentId = agent?.id ?? step.agent;
     const record = this.tasks.get(taskId ?? "")!;
+
+    try {
+      assertAgentProviderConfigured(step.agent);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { agentId, success: false, error: message };
+    }
+
     const modelCfg = this.models[step.agent];
     const providerId = modelCfg?.provider ?? (process.env.AI_PROVIDER_DEFAULT ?? "mock");
 
