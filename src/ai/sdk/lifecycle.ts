@@ -5,6 +5,7 @@ import { buildValidationDiagnostic, isRepairableDiagnostic, sanitizeDiagnosticFo
 import { logError } from "../utils/logger";
 import type { AgentExecutionContext, AgentLifecycleResult, AgentLifecycleHooks, OutputContract } from "./types";
 import { assertCapabilitiesDeclared, buildExecutionRequiredCapabilities, CapabilityDeniedError } from "./permissions";
+import { getVerticalTemplate } from "../context";
 
 type ProviderInvokeMetadata = {
   finishReason: string | null;
@@ -40,19 +41,20 @@ function isNonEmptyString(value: unknown) {
 }
 
 /**
- * Overwrites modelProvider/modelName on structured, object-shaped outputs
- * with the actual runtime provider/model from the execution context — never
- * the model's own claim. This runs after provider-response parsing and
- * before structural/semantic validation, so a model that omits, nulls, or
+ * Overwrites modelProvider/modelName/verticalTemplateVersion on structured,
+ * object-shaped outputs with the actual runtime provider/model/canonical
+ * template version from the execution context — never the model's own
+ * claim. This runs after provider-response parsing and before
+ * structural/semantic validation, so a model that omits, nulls, or
  * fabricates these fields can never have that value observed, persisted, or
  * validated; the system-owned value always wins. Scoped to BusinessPlan only
- * (the output type this was reported against) to avoid touching unrelated
+ * (the output type these were reported against) to avoid touching unrelated
  * contracts that don't declare these fields.
  */
 function withSystemOwnedProvenance(
   outputType: string,
   value: unknown,
-  provenance: { selectedProviderId: string; providerModel: string },
+  provenance: { selectedProviderId: string; providerModel: string; verticalTemplateVersion: string },
 ): unknown {
   if (outputType !== "BusinessPlan") return value;
   if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
@@ -61,6 +63,7 @@ function withSystemOwnedProvenance(
     ...(value as Record<string, unknown>),
     modelProvider: provenance.selectedProviderId,
     modelName: provenance.providerModel,
+    verticalTemplateVersion: provenance.verticalTemplateVersion,
   };
 }
 
@@ -422,6 +425,7 @@ export async function executeAgentLifecycle(input: {
       ? withSystemOwnedProvenance(outputContract.outputType, parseAnalysis.value, {
           selectedProviderId: executionContext.selectedProviderId,
           providerModel: executionContext.providerModel,
+          verticalTemplateVersion: getVerticalTemplate(executionContext.projectContext.businessVertical).version,
         })
       : null;
 
