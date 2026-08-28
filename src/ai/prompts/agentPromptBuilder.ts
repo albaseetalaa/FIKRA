@@ -2,12 +2,25 @@ import type { ProjectContext, VerticalTemplate } from "../context";
 import { getVerticalTemplate, supportsSaasStylePricing } from "../context";
 import type { AgentID } from "../types/agents";
 import {
+  BUSINESS_PLAN_REQUIRED_FIELDS,
+  BUSINESS_PLAN_SYSTEM_OWNED_FIELDS,
   EVIDENCE_TYPES,
   EVIDENCE_VALIDATION_STATUSES,
   MARKET_CLAIM_REQUIRED_FIELDS,
   MARKET_RESEARCH_REQUIRED_FIELDS,
   UNAVAILABLE_COMPETITOR_OUTCOME_REQUIRED_FIELDS,
 } from "../contracts/outputContracts";
+
+// Fields the model must actually supply — BUSINESS_PLAN_REQUIRED_FIELDS
+// (the real schema contract) minus the fields FIKRA overwrites
+// deterministically after generation (see lifecycle.ts's
+// withSystemOwnedProvenance). Telling the model to "correctly" produce a
+// value it can never verify (its own provider identity, the canonical
+// template version) would be misleading instruction; the provider's own
+// structured-output schema still requires the keys to exist.
+const BUSINESS_PLAN_MODEL_OWNED_FIELDS = BUSINESS_PLAN_REQUIRED_FIELDS.filter(
+  (field) => !(BUSINESS_PLAN_SYSTEM_OWNED_FIELDS as readonly string[]).includes(field),
+);
 
 function formatLaunchTimeline(projectContext: ProjectContext): string {
   const { launchTimeline, launchTimelineMode, launchTimelineDays } = projectContext;
@@ -55,6 +68,7 @@ export function buildAgentPrompt(params: {
     }`,
     `Launch timeline: ${projectContext.launchTimeline ?? "unresolved"} (${formatLaunchTimeline(projectContext)})`,
     `Business vertical: ${projectContext.businessVertical} (confidence=${projectContext.businessVerticalConfidence.toFixed(2)})`,
+    `Business stage: ${projectContext.businessStage}`,
     `Primary revenue model: ${primaryRevenueModel}`,
     `Secondary revenue models: ${secondaryRevenueModels.join(", ") || "none"}`,
     `Sales channels: ${salesChannels.join(", ") || "unresolved"}`,
@@ -89,38 +103,6 @@ export function buildAgentPrompt(params: {
   ].join("\n");
 
   if (agentId === "business_strategist") {
-    const requiredBusinessPlanFields = [
-      "businessName",
-      "country",
-      "city",
-      "currency",
-      "businessStage",
-      "executiveSummary",
-      "problem",
-      "solution",
-      "valueProposition",
-      "targetMarket",
-      "customerSegments",
-      "businessVertical",
-      "primaryRevenueModel",
-      "secondaryRevenueModels",
-      "operatingModel",
-      "salesChannels",
-      "revenueComponents",
-      "competitiveAdvantage",
-      "objectives",
-      "milestones",
-      "risks",
-      "assumptions",
-      "missingInputs",
-      "confidenceLevel",
-      "evidenceSummary",
-      "generatedAt",
-      "contextVersion",
-      "verticalTemplateVersion",
-      "sourceClassification",
-    ];
-
     return [
       "You are the Business Strategist.",
       common,
@@ -128,7 +110,7 @@ export function buildAgentPrompt(params: {
       `Project created at: ${projectContext.projectCreatedAt}`,
       policy,
       `Required schema: ${params.requiredSchemaName ?? "BusinessPlan"}`,
-      `Required top-level fields: ${requiredBusinessPlanFields.join(", ")}`,
+      `Required top-level fields: ${BUSINESS_PLAN_MODEL_OWNED_FIELDS.join(", ")}`,
       "Authoritative context fields must match ProjectContext exactly: businessName, country, city, currency, businessVertical, primaryRevenueModel, businessStage.",
       "Objectives must be measurable and tied to a realistic time horizon.",
       "Objectives must include id, statement, metric, targetValue, and timeHorizon.",
@@ -214,6 +196,7 @@ function serializeTemplate(template: VerticalTemplate) {
   return JSON.stringify(
     {
       verticalId: template.verticalId,
+      version: template.version,
       applicableRevenueModels: template.applicableRevenueModels,
       revenueDrivers: template.revenueDrivers,
       costCategories: template.costCategories,
